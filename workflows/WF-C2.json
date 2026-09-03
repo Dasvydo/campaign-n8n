@@ -1,0 +1,850 @@
+{
+  "name": "WF-C2 — Under-10 nurture (opt-in gated, English only)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "6ddbfcc9-4583-5a37-a650-8bdb26396133",
+      "name": "Start: called with a lead + opt-in",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [
+        -220,
+        -140
+      ],
+      "notes": "Started by hand or by a parent workflow with {lead, optin}. WF-C1 deliberately does NOT call this."
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "campaign/nurture-optin",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "c6badf49-f7d5-58ea-a145-bda2b099376e",
+      "name": "Webhook — record opt-in",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -220,
+        40
+      ],
+      "notes": "For a future opt-in capture that posts server-side. Batch A's current opt-in is a mailto and never reaches this.",
+      "webhookId": "81e0433f-66a5-5dab-9763-d29aa9cd8b94"
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cfg",
+              "name": "cfg",
+              "value": "={{ {\n  ledger_url: '',\n  dovy_email: 'hello@doviloop.dev',\n  from_email: 'dovy@doviloop.dev',\n  reply_to: 'hello@doviloop.dev',\n  data_dir: '/home/node/.n8n/campaign',\n  unsubscribe_base: '',\n  pricing_url: 'https://doviloop.dev/pricing',\n  postal_address: '',\n  dk_marketing_law_confirmed: false\n} }}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "734d8dbb-98f4-5634-9fed-6223ce10f88d",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        0,
+        -50
+      ],
+      "notes": "unsubscribe_base and postal_address must both be filled before this workflow is activated. See README."
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "/* ------------------------------------------------------------------------\n   WF-C2 · CONSENT GATE.  Read this before changing anything below it.\n   ------------------------------------------------------------------------\n   The spec for this workflow says a `too_small` lead \"enters a 3-email\n   nurture\", automatically, straight out of WF-C1. This node is the reason\n   that does not happen, and it is a legal control, not a preference.\n\n   THE FACTS, each one checked against the code rather than the spec:\n\n   1. The shared qualifier contract (00-START-HERE.md, and\n      campaign-site/src/lib/contract.ts) has ELEVEN fields and not one of them\n      is a consent field. Nothing that arrives from the landing page says this\n      person agreed to receive marketing email.\n\n   2. Batch A refused to auto-enrol and built an explicit opt-in instead. The\n      1-9 seat result screen shows \"Want the short version by email instead?\"\n      with a button the visitor has to press\n      (campaign-site/src/components/Qualifier.tsx, `nurtureHref`;\n       campaign-site/src/content/en.ts, `results.tooSmall`).\n      That button is a mailto: to hello@doviloop.dev. It does NOT post to this\n      or any other webhook. So even the real opt-in never arrives here on its\n      own, and anything this workflow receives automatically has, by\n      construction, no opt-in behind it.\n\n   3. Batch B raised the same gap independently: no consent or capture-context\n      column on a schema holding EU personal data. campaign.leads has no\n      consent column and no opt_out column. There is nowhere in the ledger to\n      even record the answer.\n\n   4. Denmark. The campaign bans Danish cold email outright, and the stated\n      reason is Danish marketing law being stricter than the rest of the EU on\n      unsolicited commercial email. A Danish address enrolled off a form that\n      never asked is precisely the exposure that ban exists to prevent. So `dk`\n      needs a second, separate confirmation from Dovy on top of the opt-in.\n\n   WHAT THIS NODE REQUIRES, therefore:\n\n     optin.granted        === true\n     optin.source           a non-empty string saying HOW they opted in\n                            (e.g. \"reply to hello@doviloop.dev 2026-09-12\")\n     optin.evidence         a non-empty string that lets a human find the proof\n                            again later (message id, thread link, screenshot path)\n     optin.recorded_at      an ISO-8601 timestamp\n     optin.work_email       must equal the lead's work_email, so an opt-in\n                            cannot be pasted onto the wrong person\n\n   and, only when market === 'dk', BOTH of:\n\n     optin.dk_marketing_law_confirmed === true   (per lead)\n     cfg.dk_marketing_law_confirmed   === true   (instance-wide, in Config)\n\n   Anything missing: the lead is PARKED. Nothing is sent. That is the whole\n   behaviour of the failure path, and it is the correct one.\n   ------------------------------------------------------------------------ */\n\nconst out = [];\n\nfor (const item of $input.all()) {\n  const j = item.json || {};\n  const cfg = j.cfg || {};\n  const lead = j.lead || j.lead_row || {};\n  const optin = j.optin || {};\n  const reasons = [];\n\n  const workEmail = String(lead.work_email || '').trim().toLowerCase();\n  if (!workEmail) reasons.push('no work_email on the lead');\n\n  if (optin.granted !== true) reasons.push('optin.granted is not exactly true');\n  if (!String(optin.source || '').trim()) reasons.push('optin.source is empty: say how they opted in');\n  if (!String(optin.evidence || '').trim()) reasons.push('optin.evidence is empty: point at the proof');\n\n  const recordedAt = String(optin.recorded_at || '').trim();\n  if (!recordedAt) reasons.push('optin.recorded_at is empty');\n  else if (Number.isNaN(Date.parse(recordedAt))) reasons.push('optin.recorded_at is not ISO-8601');\n\n  const optinEmail = String(optin.work_email || '').trim().toLowerCase();\n  if (!optinEmail) reasons.push('optin.work_email is empty');\n  else if (workEmail && optinEmail !== workEmail) {\n    reasons.push('optin.work_email (' + optinEmail + ') does not match the lead (' + workEmail + ')');\n  }\n\n  if (String(lead.market || '') === 'dk') {\n    if (optin.dk_marketing_law_confirmed !== true) {\n      reasons.push('market is dk and optin.dk_marketing_law_confirmed is not true');\n    }\n    if (cfg.dk_marketing_law_confirmed !== true) {\n      reasons.push('market is dk and Config.dk_marketing_law_confirmed is not true. ' +\n        'Denmark needs Dovy to confirm the marketing-law position once, in Config, ' +\n        'before ANY Danish address can be emailed by this campaign.');\n    }\n  }\n\n  // Already unsubscribed? Never re-enrol someone who has opted out.\n  const store = $getWorkflowStaticData('global');\n  store.optedOut = store.optedOut || {};\n  if (workEmail && store.optedOut[workEmail]) {\n    reasons.push('this address opted out on ' + store.optedOut[workEmail] + ' and must not be re-enrolled');\n  }\n\n  const consented = reasons.length === 0;\n\n  out.push({ json: Object.assign({}, j, {\n    consented: consented,\n    consent_reasons: reasons,\n    work_email: workEmail,\n    // Opaque, not secret. The worst an attacker can do with a guessed token is\n    // unsubscribe someone, which fails safe. Documented in README.\n    unsub_token: Buffer.from('unsub:' + workEmail).toString('base64url'),\n    parked_line: consented ? null : JSON.stringify({\n      parked_at: new Date().toISOString(),\n      work_email: workEmail || null,\n      company_name: lead.company_name || null,\n      market: lead.market || null,\n      reasons: reasons,\n      sent: 'nothing',\n    }),\n  }) });\n}\n\nreturn out;\n"
+      },
+      "id": "aa16ae44-dfa1-5f53-8bd5-d83d27c63575",
+      "name": "Consent gate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        -50
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "6768b8ae-67de-5b3f-a55b-2813402c57c3",
+              "leftValue": "={{ $json.consented }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "83fa443d-4e1c-5f5f-8002-4b5946031177",
+      "name": "IF consent proven",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        440,
+        -50
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "32b39192-dea6-536b-abbc-2a1e1e1b54b6",
+      "name": "Park: no opt-in, send nothing",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        660,
+        160
+      ],
+      "notes": "This is the correct outcome for a lead with no opt-in. It is not an error."
+    },
+    {
+      "parameters": {
+        "operation": "toText",
+        "sourceProperty": "parked_line",
+        "options": {
+          "fileName": "nurture-parked.jsonl",
+          "encoding": "utf8"
+        }
+      },
+      "id": "916e971f-0b7d-57d7-906f-10f920497fd6",
+      "name": "To file: parked",
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        880,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "={{ $('Config').first().json.cfg.data_dir }}/nurture-parked.jsonl",
+        "dataPropertyName": "data",
+        "options": {
+          "append": true
+        }
+      },
+      "id": "1ace5b3a-c2db-5019-a875-b4208f7ee7d3",
+      "name": "Append nurture-parked.jsonl",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        1100,
+        160
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "/* WF-C2 · The three emails.\n\n   English only, per spec. Voice rules from 00-START-HERE.md: casual, plain\n   verbs, no em dashes, none of the AI-flavoured phrasing. Every one carries a\n   working unsubscribe link, and email 1 says in its first two lines why they\n   are getting it and how to stop.\n\n   ====================================================================\n   EMAIL 2 AND THE ROI NUMBERS. Read this before adding any figure.\n   ====================================================================\n   The spec says email 2 carries \"the ROI numbers\": roughly 9x ROI, roughly\n   EUR 400 a month saved, roughly a 40 day payback.\n\n   ad-engine/claims/evidence.json, which is Dovy's own claims ledger, says:\n   \"DoviLoop currently has no customers, no case studies and no measured\n   outcomes\", marks hours_saved, customer_count and percentage_claim as\n   UNVERIFIED, and notes that a measurable public claim with nothing behind it\n   \"is the exposure an investor specifically warned about\".\n\n   00-START-HERE.md calls the same figures verified proof. Both cannot be true.\n   Batch E resolved it by shipping zero ROI numbers in any of its eight statics\n   and six copy variants. This workflow resolves it the same way, and for a\n   stronger reason: an ad is a claim shouted at a crowd, whereas this is a\n   named person who filled in a form, and a number in their inbox is a number\n   they can hold you to.\n\n   So email 2 below is written to work WITHOUT the figures. It explains the\n   mechanism instead of the payoff, which is the part that is verifiable today.\n\n   THE SLOT: if Dovy confirms the figures were measured against a real customer,\n   set ROI_BLOCK below to the commented-out paragraph and nothing else changes.\n   Do not set it on the strength of the numbers merely having been used before.\n   Prior use of an unmeasured number is not evidence for it. Logged in\n   BLOCKED.md as F-5. */\n\n// ---------------------------------------------------------------------------\n// ROI SLOT. Ships empty. Fill ONLY if ad-engine/claims/evidence.json is updated\n// to say the figures were measured against a real customer.\n//\n//   const ROI_BLOCK =\n//     '<p>On the numbers: firms like yours have seen about <b>X</b> back for ' +\n//     'every euro spent, roughly <b>EUR Y a month</b> of time returned, and ' +\n//     'payback in about <b>Z days</b>. Those come from ' +\n//     '&lt;name the measurement here&gt;.</p>';\n//\nconst ROI_BLOCK = '';\n// ---------------------------------------------------------------------------\n\nfunction esc(s) {\n  return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n}\n\nconst out = [];\nfor (const item of $input.all()) {\n  const j = item.json || {};\n  const cfg = j.cfg || {};\n  const lead = j.lead || j.lead_row || {};\n  const first = String(lead.company_name || '').trim();\n  const pricing = cfg.pricing_url || 'https://doviloop.dev/pricing';\n\n  const unsubUrl = String(cfg.unsubscribe_base || '') +\n    '?e=' + encodeURIComponent(j.work_email || '') +\n    '&t=' + encodeURIComponent(j.unsub_token || '');\n\n  const foot =\n    '<hr style=\"border:none;border-top:1px solid #e5e5e5;margin:26px 0\">' +\n    '<p style=\"font-size:12px;color:#777;line-height:1.6\">' +\n    'You asked us to send these when you filled in the form at teams.doviloop.dev. ' +\n    'Three notes over two weeks, then they stop on their own.<br>' +\n    '<a href=\"' + esc(unsubUrl) + '\">Stop these emails</a>' +\n    (cfg.postal_address ? '<br>' + esc(cfg.postal_address) : '') +\n    '</p>';\n\n  const wrap = (inner) =>\n    '<div style=\"font-family:system-ui,-apple-system,Segoe UI,sans-serif;font-size:15px;' +\n    'line-height:1.65;color:#1a1a1a;max-width:560px\">' + inner + foot + '</div>';\n\n  const emails = {\n    e1: {\n      subject: 'The short version, note 1 of 3',\n      html: wrap(\n        '<p>Hi' + (first ? ' ' + esc(first) : '') + ',</p>' +\n        '<p>You asked for the short version by email, so here it is. Three notes, ' +\n        'two weeks, then they stop. You can stop them sooner with the link at the ' +\n        'bottom and I will not chase.</p>' +\n        '<p><b>What DoviLoop does.</b> It sits inside the Outlook you already use ' +\n        'and writes the reply for the mail you get twenty times a week. The same ' +\n        'fee question, the same deadline question, the same \"can you send me the ' +\n        'form again\". It writes the draft in your own words, using your own fees ' +\n        'and deadlines, and puts it in your drafts folder.</p>' +\n        '<p>It never sends anything on its own. You read it, you change what you ' +\n        'want, you press send. That is the whole deal.</p>' +\n        '<p>You are under ten seats today, so the team plan is not the right shape ' +\n        'for you. The smaller plan does the same drafting and costs a lot less.</p>' +\n        '<p><a href=\"' + esc(pricing) + '\">See the plan for smaller teams</a></p>' +\n        '<p>Next note, in about four days: how the drafting actually works, and why ' +\n        'it does not read like a robot.</p>' +\n        '<p>Dovy</p>'),\n    },\n    e2: {\n      subject: 'How the drafting actually works, note 2 of 3',\n      html: wrap(\n        '<p>Hi' + (first ? ' ' + esc(first) : '') + ',</p>' +\n        '<p>Second note. This one is the mechanism, because that is the part you ' +\n        'can check for yourself.</p>' +\n        '<p><b>It learns how you write.</b> It reads your sent mail and builds a ' +\n        'profile of how you actually put a sentence together. Short or long, ' +\n        'formal or not, whether you open with a greeting. Every person in the ' +\n        'office gets their own. That is why the drafts do not read like a robot ' +\n        'wrote them: they read like you on a normal day.</p>' +\n        '<p><b>It answers from your documents, not the internet.</b> Your fee ' +\n        'schedule, your deadlines, your policies, the answers you have already ' +\n        'given a hundred times. When a client asks what the filing deadline is, it ' +\n        'answers from your file, not from something it read somewhere.</p>' +\n        '<p><b>It never sends.</b> There is no send button on its side. It writes ' +\n        'into your drafts folder and stops. Nothing leaves your Outlook without ' +\n        'you pressing send.</p>' +\n        '<p><b>It stays in Europe.</b> The whole thing runs on European servers.</p>' +\n        ROI_BLOCK +\n        '<p>Worth saying plainly: we are early, and we do not have a customer ' +\n        'yet whose numbers I can show you. When we do, I will send them rather ' +\n        'than an estimate.</p>' +\n        '<p><a href=\"' + esc(pricing) + '\">The plan for smaller teams</a></p>' +\n        '<p>Last note in about a week.</p>' +\n        '<p>Dovy</p>'),\n    },\n    e3: {\n      subject: 'Last one, note 3 of 3',\n      html: wrap(\n        '<p>Hi' + (first ? ' ' + esc(first) : '') + ',</p>' +\n        '<p>Last note, and then I am out of your inbox.</p>' +\n        '<p>The team offer starts at ten seats because that is where the setup ' +\n        'work pays for itself. Below that you are better off on the smaller plan, ' +\n        'which is why I pointed you there rather than booking a call that would ' +\n        'have reached the same answer.</p>' +\n        '<p>If the office grows past ten, reply to this email and I will pick it ' +\n        'up. The team version comes with a workshop, the setup done for you, and ' +\n        'two weeks free before anything is charged. No form to fill in again, just ' +\n        'reply to this one.</p>' +\n        '<p>If it does not grow, that is fine too. The smaller plan is here:</p>' +\n        '<p><a href=\"' + esc(pricing) + '\">doviloop.dev pricing</a></p>' +\n        '<p>Thanks for the two weeks of attention.</p>' +\n        '<p>Dovy</p>'),\n    },\n  };\n\n  out.push({ json: Object.assign({}, j, { emails: emails, unsub_url: unsubUrl }) });\n}\nreturn out;\n"
+      },
+      "id": "e4fb488b-7530-55c2-8cda-a09be6c2af7a",
+      "name": "Build the three emails",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        -180
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "/* WF-C2 · Suppression check. Runs before EVERY send, not just the first.\n\n   Someone can unsubscribe on day 5, between email 2 and email 3, and the whole\n   point of \"trivially easy to stop\" is that the next one does not go out.\n\n   The operative store is n8n's workflow static data, written by the\n   \"Unsubscribe\" branch of this same workflow. There is no opt_out column in\n   campaign.leads to write to: Batch B's schema does not have one, and a\n   workflow cannot add one (Dovy runs migrations, not n8n). sql/004_consent.sql\n   in this repo is the proposed migration that would make this durable. Until it\n   is run, an n8n instance rebuild loses the suppression list, which is why the\n   unsubscribe branch ALSO appends to a file and emails Dovy. */\n\nconst store = $getWorkflowStaticData('global');\nstore.optedOut = store.optedOut || {};\n\nconst out = [];\nfor (const item of $input.all()) {\n  const j = item.json || {};\n  const email = String(j.work_email || '').trim().toLowerCase();\n  const optedOutAt = email ? store.optedOut[email] : null;\n  out.push({ json: Object.assign({}, j, {\n    still_subscribed: !optedOutAt,\n    opted_out_at: optedOutAt || null,\n  }) });\n}\nreturn out;\n"
+      },
+      "id": "e340fbf7-c03d-5a53-946d-630b5563bb0b",
+      "name": "Suppression check 1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        -180
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "0344f8f4-7a37-5b75-89b1-85ea9ee35bce",
+              "leftValue": "={{ $json.still_subscribed }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "266b478d-f1ea-5955-a9c4-8114e23322bf",
+      "name": "IF subscribed 1",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        -180
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $json.cfg.from_email }}",
+        "toEmail": "={{ $json.work_email }}",
+        "subject": "={{ $json.emails.e1.subject }}",
+        "emailFormat": "html",
+        "html": "={{ $json.emails.e1.html }}",
+        "options": {}
+      },
+      "id": "c6c8ca5d-428e-5f0c-818e-9d69c47b708b",
+      "name": "Send email 1 (day 0)",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1320,
+        -260
+      ],
+      "credentials": {
+        "smtp": {
+          "name": "DoviLoop campaign SMTP"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": 4,
+        "unit": "days"
+      },
+      "id": "98b94a17-7a6c-5e28-a436-cce970a70d21",
+      "name": "Wait 4 days",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1540,
+        -260
+      ],
+      "webhookId": "97f5f8e5-1f93-5de3-a3e4-4349a46c6cbe"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "/* WF-C2 · Suppression check. Runs before EVERY send, not just the first.\n\n   Someone can unsubscribe on day 5, between email 2 and email 3, and the whole\n   point of \"trivially easy to stop\" is that the next one does not go out.\n\n   The operative store is n8n's workflow static data, written by the\n   \"Unsubscribe\" branch of this same workflow. There is no opt_out column in\n   campaign.leads to write to: Batch B's schema does not have one, and a\n   workflow cannot add one (Dovy runs migrations, not n8n). sql/004_consent.sql\n   in this repo is the proposed migration that would make this durable. Until it\n   is run, an n8n instance rebuild loses the suppression list, which is why the\n   unsubscribe branch ALSO appends to a file and emails Dovy. */\n\nconst store = $getWorkflowStaticData('global');\nstore.optedOut = store.optedOut || {};\n\nconst out = [];\nfor (const item of $input.all()) {\n  const j = item.json || {};\n  const email = String(j.work_email || '').trim().toLowerCase();\n  const optedOutAt = email ? store.optedOut[email] : null;\n  out.push({ json: Object.assign({}, j, {\n    still_subscribed: !optedOutAt,\n    opted_out_at: optedOutAt || null,\n  }) });\n}\nreturn out;\n"
+      },
+      "id": "d0697f9d-58dc-50a0-b1a5-94279fd2e698",
+      "name": "Suppression check 2",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        -260
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "0344f8f4-7a37-5b75-89b1-85ea9ee35bce",
+              "leftValue": "={{ $json.still_subscribed }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "abb13461-46c4-52f2-b209-1a67accc76a8",
+      "name": "IF subscribed 2",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1980,
+        -260
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $json.cfg.from_email }}",
+        "toEmail": "={{ $json.work_email }}",
+        "subject": "={{ $json.emails.e2.subject }}",
+        "emailFormat": "html",
+        "html": "={{ $json.emails.e2.html }}",
+        "options": {}
+      },
+      "id": "2ab8b930-a8e7-53bf-b2e7-df66d5567524",
+      "name": "Send email 2 (day 4)",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        2200,
+        -340
+      ],
+      "credentials": {
+        "smtp": {
+          "name": "DoviLoop campaign SMTP"
+        }
+      },
+      "notes": "Carries NO ROI figures. See the ROI SLOT comment in 'Build the three emails' and BLOCKED.md F-5."
+    },
+    {
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": 7,
+        "unit": "days"
+      },
+      "id": "4f6f6651-a101-5273-888b-08982a584e8b",
+      "name": "Wait 7 days",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        2420,
+        -340
+      ],
+      "webhookId": "c61463b3-1ddb-512b-873a-b6f7b7a1b2b3"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "/* WF-C2 · Suppression check. Runs before EVERY send, not just the first.\n\n   Someone can unsubscribe on day 5, between email 2 and email 3, and the whole\n   point of \"trivially easy to stop\" is that the next one does not go out.\n\n   The operative store is n8n's workflow static data, written by the\n   \"Unsubscribe\" branch of this same workflow. There is no opt_out column in\n   campaign.leads to write to: Batch B's schema does not have one, and a\n   workflow cannot add one (Dovy runs migrations, not n8n). sql/004_consent.sql\n   in this repo is the proposed migration that would make this durable. Until it\n   is run, an n8n instance rebuild loses the suppression list, which is why the\n   unsubscribe branch ALSO appends to a file and emails Dovy. */\n\nconst store = $getWorkflowStaticData('global');\nstore.optedOut = store.optedOut || {};\n\nconst out = [];\nfor (const item of $input.all()) {\n  const j = item.json || {};\n  const email = String(j.work_email || '').trim().toLowerCase();\n  const optedOutAt = email ? store.optedOut[email] : null;\n  out.push({ json: Object.assign({}, j, {\n    still_subscribed: !optedOutAt,\n    opted_out_at: optedOutAt || null,\n  }) });\n}\nreturn out;\n"
+      },
+      "id": "bb45b7fb-d07a-52a2-9b3f-41b8dea0a59c",
+      "name": "Suppression check 3",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2640,
+        -340
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "0344f8f4-7a37-5b75-89b1-85ea9ee35bce",
+              "leftValue": "={{ $json.still_subscribed }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "76908b20-2f7d-58d1-a214-0bad8eeee09e",
+      "name": "IF subscribed 3",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2860,
+        -340
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $json.cfg.from_email }}",
+        "toEmail": "={{ $json.work_email }}",
+        "subject": "={{ $json.emails.e3.subject }}",
+        "emailFormat": "html",
+        "html": "={{ $json.emails.e3.html }}",
+        "options": {}
+      },
+      "id": "2b3ed392-bbd2-5011-b477-aca415968db6",
+      "name": "Send email 3 (day 11)",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        3080,
+        -420
+      ],
+      "credentials": {
+        "smtp": {
+          "name": "DoviLoop campaign SMTP"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "d3279749-ed9c-591a-946a-d375faa42311",
+      "name": "Stopped: unsubscribed mid-sequence",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        3080,
+        -180
+      ],
+      "notes": "Every suppression check lands here on a false. Correct outcome."
+    },
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "campaign/unsubscribe",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "017f667b-b197-5fba-975f-46e9bab25e3e",
+      "name": "Webhook — unsubscribe",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        220,
+        420
+      ],
+      "notes": "One click, no confirm step. This is the 'trivially easy to stop' requirement.",
+      "webhookId": "ad6517de-23eb-58c5-9a0d-3853b9326409"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "/* WF-C2 · Record an unsubscribe.\n\n   Writes to three places on purpose, because the one place it SHOULD write to\n   does not exist yet:\n\n     1. n8n workflow static data. This is what the suppression check reads, so\n        it is what actually stops the next email.\n     2. an append-only file, so the record survives a static-data reset.\n     3. an email to Dovy, so a human knows.\n\n   What is missing: campaign.leads has no opt_out column. Batch B's schema does\n   not have one and this workflow cannot add one. sql/004_consent.sql in this\n   repo is the migration that would fix it properly. Until Dovy runs it, points\n   1 to 3 are the whole mechanism. See BLOCKED.md F-6. */\n\nconst store = $getWorkflowStaticData('global');\nstore.optedOut = store.optedOut || {};\n\nconst out = [];\nfor (const item of $input.all()) {\n  const j = item.json || {};\n  const q = j.query || {};\n  const email = String(q.e || '').trim().toLowerCase();\n  const now = new Date().toISOString();\n\n  if (email) store.optedOut[email] = now;\n\n  out.push({ json: Object.assign({}, j, {\n    unsub_email: email,\n    unsub_at: now,\n    line: JSON.stringify({ opted_out_at: now, work_email: email || null,\n                           token: q.t || null, via: 'WF-C2 unsubscribe webhook' }),\n    ack_html:\n      '<!doctype html><meta charset=\"utf-8\"><title>Stopped</title>' +\n      '<body style=\"font-family:system-ui,sans-serif;max-width:520px;margin:12vh auto;' +\n      'padding:0 20px;line-height:1.6;color:#1a1a1a\">' +\n      '<h1 style=\"font-size:22px\">Stopped.</h1>' +\n      '<p>No more emails from this campaign to <b>' +\n      (email || 'that address').replace(/</g, '&lt;') + '</b>.</p>' +\n      '<p style=\"color:#666;font-size:14px\">Nothing else happens. You do not need ' +\n      'to confirm and there is no second step.</p></body>',\n  }) });\n}\nreturn out;\n"
+      },
+      "id": "ce23b97c-9f31-5799-9f2c-17a6fc13143f",
+      "name": "Record opt-out",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseCode": 200,
+        "responseBody": "={{ $json.ack_html }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=utf-8"
+              }
+            ]
+          }
+        }
+      },
+      "id": "0589c57f-e2d9-547b-809d-07dae7876bdd",
+      "name": "Respond: stopped",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        660,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "toText",
+        "sourceProperty": "line",
+        "options": {
+          "fileName": "opt-outs.jsonl",
+          "encoding": "utf8"
+        }
+      },
+      "id": "6e21d07b-e551-560a-ab54-257050b15cfa",
+      "name": "To file: opt-out",
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        880,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "={{ $('Config').first().json.cfg.data_dir }}/opt-outs.jsonl",
+        "dataPropertyName": "data",
+        "options": {
+          "append": true
+        }
+      },
+      "id": "c84f000e-ee51-5f34-b102-6ec4dc68e266",
+      "name": "Append opt-outs.jsonl",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        1100,
+        420
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $('Config').first().json.cfg.from_email }}",
+        "toEmail": "={{ $('Config').first().json.cfg.dovy_email }}",
+        "subject": "=[Unsubscribe] {{ $('Record opt-out').first().json.unsub_email }}",
+        "emailFormat": "html",
+        "html": "=<p>{{ $('Record opt-out').first().json.unsub_email }} stopped the under-10 nurture at {{ $('Record opt-out').first().json.unsub_at }}.</p><p>Recorded in n8n static data and in opt-outs.jsonl. There is still no opt_out column in campaign.leads to write it to. See sql/004_consent.sql.</p>",
+        "options": {}
+      },
+      "id": "42324f9c-103e-5d30-8c31-52961ae9748c",
+      "name": "Send: someone unsubscribed",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1320,
+        420
+      ],
+      "credentials": {
+        "smtp": {
+          "name": "DoviLoop campaign SMTP"
+        }
+      },
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "Start: called with a lead + opt-in": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook — record opt-in": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Consent gate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Consent gate": {
+      "main": [
+        [
+          {
+            "node": "IF consent proven",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF consent proven": {
+      "main": [
+        [
+          {
+            "node": "Build the three emails",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Park: no opt-in, send nothing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Park: no opt-in, send nothing": {
+      "main": [
+        [
+          {
+            "node": "To file: parked",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "To file: parked": {
+      "main": [
+        [
+          {
+            "node": "Append nurture-parked.jsonl",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build the three emails": {
+      "main": [
+        [
+          {
+            "node": "Suppression check 1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Suppression check 1": {
+      "main": [
+        [
+          {
+            "node": "IF subscribed 1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF subscribed 1": {
+      "main": [
+        [
+          {
+            "node": "Send email 1 (day 0)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Stopped: unsubscribed mid-sequence",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send email 1 (day 0)": {
+      "main": [
+        [
+          {
+            "node": "Wait 4 days",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 4 days": {
+      "main": [
+        [
+          {
+            "node": "Suppression check 2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Suppression check 2": {
+      "main": [
+        [
+          {
+            "node": "IF subscribed 2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF subscribed 2": {
+      "main": [
+        [
+          {
+            "node": "Send email 2 (day 4)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Stopped: unsubscribed mid-sequence",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send email 2 (day 4)": {
+      "main": [
+        [
+          {
+            "node": "Wait 7 days",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 7 days": {
+      "main": [
+        [
+          {
+            "node": "Suppression check 3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Suppression check 3": {
+      "main": [
+        [
+          {
+            "node": "IF subscribed 3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF subscribed 3": {
+      "main": [
+        [
+          {
+            "node": "Send email 3 (day 11)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Stopped: unsubscribed mid-sequence",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook — unsubscribe": {
+      "main": [
+        [
+          {
+            "node": "Record opt-out",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Record opt-out": {
+      "main": [
+        [
+          {
+            "node": "Respond: stopped",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond: stopped": {
+      "main": [
+        [
+          {
+            "node": "To file: opt-out",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "To file: opt-out": {
+      "main": [
+        [
+          {
+            "node": "Append opt-outs.jsonl",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append opt-outs.jsonl": {
+      "main": [
+        [
+          {
+            "node": "Send: someone unsubscribed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Copenhagen",
+    "saveManualExecutions": true,
+    "saveExecutionProgress": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all"
+  },
+  "pinData": {},
+  "tags": [],
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "versionId": "0d094912-a779-5ef3-ad55-01264d05ce7b"
+}

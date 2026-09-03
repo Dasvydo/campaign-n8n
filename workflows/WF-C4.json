@@ -1,0 +1,777 @@
+{
+  "name": "WF-C4 — Comment keyword to DM (approval gated)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "campaign/meta-comments",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "31ae3014-2c95-5817-a81b-31513cd2648f",
+      "name": "Webhook — Meta verify",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -240,
+        320
+      ],
+      "notes": "Meta calls this once with hub.challenge when the subscription is created.",
+      "webhookId": "f795fedb-de6b-510f-a5ff-5484bcf21957"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseCode": 200,
+        "responseBody": "={{ $json.query['hub.challenge'] }}",
+        "options": {}
+      },
+      "id": "2435ba73-3d09-5af4-9140-3bb220ad571f",
+      "name": "Respond: hub.challenge",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        -20,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "campaign/meta-comments",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "1035ef7a-fd3b-50a9-9017-1d9a5c3c554e",
+      "name": "Webhook — Meta comments",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -240,
+        0
+      ],
+      "notes": "Meta requires a 200 within seconds, so this answers immediately and does the work afterwards.",
+      "webhookId": "2abe3824-dc0b-50e5-88c5-f2abd8d04cb1"
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cfg",
+              "name": "cfg",
+              "value": "={{ {\n  ledger_url: '',\n  dovy_email: 'hello@doviloop.dev',\n  from_email: 'campaign-bot@doviloop.dev',\n  data_dir: '/home/node/.n8n/campaign',\n  meta_graph_version: 'v21.0',\n  ig_user_id: '',\n  fb_page_id: '',\n  landing_url: 'https://teams.doviloop.dev',\n  keywords: ['draft', 'drafts', 'demo', 'outlook', 'info'],\n  rate_limit_days: 90,\n  approve_base: ''\n} }}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e8eb510c-128c-51c8-a4e7-bd17c1af1775",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -20,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "/* WF-C4 · Match the keyword, rate-limit the person, build the link.\n\n   Rate limit: one DM per person per platform per rate_limit_days, held in\n   workflow static data. \"Nobody gets two\" is the requirement; this makes a\n   second one impossible even if they comment the keyword ten times. */\n\nconst cfg = $('Config').first().json.cfg || {};\nconst store = $getWorkflowStaticData('global');\nstore.dmSent = store.dmSent || {};      // \"platform:user_id\" -> ISO\nstore.pending = store.pending || {};    // approval token -> draft\n\nconst keywords = (cfg.keywords || []).map(k => String(k).toLowerCase());\nconst windowMs = Number(cfg.rate_limit_days || 90) * 24 * 3600 * 1000;\n\nfunction commentsFrom(body) {\n  // Meta delivers webhooks as { object, entry: [ { changes: [ { field, value } ] } ] }.\n  const found = [];\n  for (const entry of (body.entry || [])) {\n    const objectId = entry.id;\n    for (const change of (entry.changes || [])) {\n      const v = change.value || {};\n      if (change.field !== 'comments' && change.field !== 'feed') continue;\n      if (v.item && v.item !== 'comment') continue;\n      found.push({\n        platform: body.object === 'instagram' ? 'instagram' : 'facebook',\n        object_id: objectId,\n        comment_id: v.id || v.comment_id || null,\n        media_id: (v.media && v.media.id) || v.post_id || v.parent_id || null,\n        text: v.text || v.message || '',\n        user_id: (v.from && v.from.id) || v.sender_id || null,\n        user_name: (v.from && (v.from.username || v.from.name)) || null,\n      });\n    }\n  }\n  return found;\n}\n\nconst out = [];\nfor (const item of $input.all()) {\n  const body = (item.json && item.json.body) || {};\n  for (const c of commentsFrom(body)) {\n    const text = String(c.text || '').toLowerCase();\n    const hit = keywords.find(k => text.includes(k));\n    const rateKey = c.platform + ':' + (c.user_id || 'unknown');\n    const lastAt = store.dmSent[rateKey];\n    const rateLimited = !!lastAt && (Date.now() - Date.parse(lastAt)) < windowMs;\n\n    const reasons = [];\n    if (!hit) reasons.push('no keyword matched');\n    if (!c.comment_id) reasons.push('no comment id, cannot send a private reply');\n    if (!c.user_id) reasons.push('no user id, cannot rate-limit safely');\n    if (rateLimited) reasons.push('already messaged on ' + lastAt +\n      ' (rate limit is ' + cfg.rate_limit_days + ' days)');\n\n    const token = Buffer.from(rateKey + '|' + (c.comment_id || '') + '|' +\n      Date.now()).toString('base64url');\n\n    out.push({ json: {\n      cfg: cfg,\n      matched: reasons.length === 0,\n      match_reasons: reasons,\n      keyword: hit || null,\n      approval_token: token,\n      comment: c,\n      rate_key: rateKey,\n    } });\n  }\n}\n\nif (out.length === 0) {\n  out.push({ json: { cfg: cfg, matched: false,\n                     match_reasons: ['no comment in the webhook payload'], comment: null } });\n}\nreturn out;\n"
+      },
+      "id": "0f21e162-e0de-5262-a719-66cb9e402bab",
+      "name": "Match keyword + rate limit",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        200,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "008098b8-95b4-57fc-941d-7a7aee013253",
+              "leftValue": "={{ $json.matched }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "1015912c-6f1b-5896-9c2e-bcddaae0a320",
+      "name": "IF keyword matched",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        420,
+        0
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "b46e14d4-7934-50b1-935d-9fbc6f551430",
+      "name": "No match, do nothing",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        640,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.cfg.ledger_url }}/rest/v1/content?buffer_id=like.*{{ $json.comment.media_id }}*&select=*&limit=1",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "fullResponse": true
+            }
+          },
+          "timeout": 20000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept-Profile",
+              "value": "campaign"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        }
+      },
+      "id": "85c52557-6211-52c9-95e9-4d6dc0cc7cd1",
+      "name": "Ledger: find the reel",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        640,
+        -100
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "name": "Campaign Ledger (Supabase, campaign schema)"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true,
+      "notes": "Joins the comment back to the reel through the ids WF-C3 wrote into buffer_id. A miss is fine: the link falls back to a generic UTM."
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const out = [];\nconst src = $('Match keyword + rate limit').all().filter(i => i.json.matched);\nconst responses = $input.all();\nfor (let i = 0; i < src.length; i++) {\n  const res = responses[Math.min(i, responses.length - 1)];\n  const body = res && res.json ? (res.json.body !== undefined ? res.json.body : res.json) : null;\n  out.push({ json: Object.assign({}, src[i].json, {\n    content_lookup: Array.isArray(body) ? body : (body && body.id ? [body] : []),\n  }) });\n}\nreturn out;\n"
+      },
+      "id": "0f1902e7-1b81-5e78-850d-717bdcaa5063",
+      "name": "Merge lookup onto the comment",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        860,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "/* WF-C4 · Build the DM draft and the approval request.\n\n   THE APPROVAL STEP IS NOT OPTIONAL AND HAS NO BYPASS.\n\n   Dovy's standing rule is that nothing which sends a message to a real person\n   may exist without an explicit approval step. A DM to somebody who left a\n   comment is a message to a real person, so it goes through the same gate as\n   everything else. There is deliberately no `require_approval: false` in\n   Config: a toggle that turns the rule off is the same as not having the rule.\n\n   What this costs: the DM is not instant. What it buys: this workflow cannot,\n   under any misconfiguration, message a stranger without Dovy pressing a link.\n\n   The reel's UTM comes from the content row whose buffer_id contains the media\n   id WF-C3 wrote there. If the lookup misses, the link still works and falls\n   back to a generic social UTM rather than sending a broken URL. */\n\nfunction esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); }\n\nconst out = [];\nfor (const item of $input.all()) {\n  const j = item.json || {};\n  const cfg = j.cfg || {};\n  const c = j.comment || {};\n\n  // The content row, if the lookup found one.\n  let content = null;\n  const lookup = j.content_lookup;\n  if (Array.isArray(lookup) && lookup.length) content = lookup[0];\n\n  const utm = {\n    source: c.platform === 'instagram' ? 'instagram' : 'facebook',\n    medium: 'social_dm',\n    campaign: 'teams_q4',\n    content: content ? (content.natural_key || content.id) : 'comment_keyword',\n  };\n  const link = String(cfg.landing_url || '').replace(/\\/+$/, '') +\n    '/?utm_source=' + encodeURIComponent(utm.source) +\n    '&utm_medium=' + encodeURIComponent(utm.medium) +\n    '&utm_campaign=' + encodeURIComponent(utm.campaign) +\n    '&utm_content=' + encodeURIComponent(utm.content);\n\n  const dmText =\n    'Thanks for the comment. Here is the page with the two minute version and ' +\n    'a place to book a call if it looks right for your office: ' + link + ' ' +\n    'If it is not a fit, no problem at all, and I will not follow up.';\n\n  const approveUrl = String(cfg.approve_base || '') +\n    '?t=' + encodeURIComponent(j.approval_token || '');\n\n  out.push({ json: Object.assign({}, j, {\n    dm_text: dmText,\n    landing_link: link,\n    utm: utm,\n    content_id: content ? content.id : null,\n    content_natural_key: content ? content.natural_key : null,\n    approve_url: approveUrl,\n    approval_subject: '[Approve DM] ' + (c.user_name || c.user_id || 'someone') +\n      ' commented \"' + String(c.text || '').slice(0, 40) + '\" on ' + c.platform,\n    approval_html:\n      '<div style=\"font-family:system-ui,sans-serif;font-size:14px;line-height:1.6\">' +\n      '<p>Someone commented a keyword. <b>Nothing has been sent.</b></p>' +\n      '<table cellpadding=\"6\" style=\"border-collapse:collapse\">' +\n      '<tr><td style=\"color:#666\">Platform</td><td>' + esc(c.platform) + '</td></tr>' +\n      '<tr><td style=\"color:#666\">From</td><td>' + esc(c.user_name || c.user_id) + '</td></tr>' +\n      '<tr><td style=\"color:#666\">Comment</td><td>' + esc(c.text) + '</td></tr>' +\n      '<tr><td style=\"color:#666\">Matched</td><td>' + esc(j.keyword) + '</td></tr>' +\n      '<tr><td style=\"color:#666\">Reel</td><td>' +\n        esc(content ? (content.natural_key + ' (' + content.language + ')') : 'not identified') +\n      '</td></tr></table>' +\n      '<p><b>The DM that would go out:</b></p>' +\n      '<blockquote style=\"border-left:3px solid #ddd;padding-left:12px;color:#333\">' +\n      esc(dmText) + '</blockquote>' +\n      '<p style=\"margin-top:20px\"><a href=\"' + esc(approveUrl) +\n      '\" style=\"background:#111;color:#fff;padding:11px 18px;text-decoration:none;' +\n      'border-radius:6px;display:inline-block\">Send this DM</a></p>' +\n      '<p style=\"font-size:13px;color:#666\">Do nothing and nothing is sent. The link ' +\n      'works once. This person will not be messaged again for ' +\n      esc(cfg.rate_limit_days) + ' days either way.</p></div>',\n    line: JSON.stringify({ drafted_at: new Date().toISOString(), platform: c.platform,\n      user_id: c.user_id, comment_id: c.comment_id, keyword: j.keyword,\n      token: j.approval_token, sent: false }),\n  }) });\n}\nreturn out;\n"
+      },
+      "id": "9d418e07-5ced-592b-a1c4-d05fc9b6ab5a",
+      "name": "Build DM draft",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1080,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "/* WF-C4 · Park the draft against its one-shot approval token. */\nconst store = $getWorkflowStaticData('global');\nstore.pending = store.pending || {};\nconst out = [];\nfor (const item of $input.all()) {\n  const j = item.json || {};\n  if (j.approval_token) {\n    store.pending[j.approval_token] = {\n      created_at: new Date().toISOString(),\n      platform: j.comment.platform,\n      comment_id: j.comment.comment_id,\n      user_id: j.comment.user_id,\n      user_name: j.comment.user_name,\n      rate_key: j.rate_key,\n      dm_text: j.dm_text,\n      landing_link: j.landing_link,\n      utm: j.utm,\n      content_id: j.content_id || null,\n      content_natural_key: j.content_natural_key || null,\n    };\n  }\n  out.push(item);\n}\nreturn out;\n"
+      },
+      "id": "4b1badd5-ad7a-5bee-963c-c1000b9333a0",
+      "name": "Park draft against a token",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1300,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $json.cfg.from_email }}",
+        "toEmail": "={{ $json.cfg.dovy_email }}",
+        "subject": "={{ $json.approval_subject }}",
+        "emailFormat": "html",
+        "html": "={{ $json.approval_html }}",
+        "options": {}
+      },
+      "id": "e0a7333e-f867-5350-ad8f-f75e17c2771e",
+      "name": "Send: approve this DM",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1520,
+        -100
+      ],
+      "credentials": {
+        "smtp": {
+          "name": "DoviLoop campaign SMTP"
+        }
+      },
+      "notes": "THE approval step. There is no path from the comment to a DM that does not pass through Dovy clicking the link in this email."
+    },
+    {
+      "parameters": {
+        "operation": "toText",
+        "sourceProperty": "line",
+        "options": {
+          "fileName": "dm-drafts.jsonl",
+          "encoding": "utf8"
+        }
+      },
+      "id": "1fe5760d-9fcc-5665-a1e8-7b1196aac3ab",
+      "name": "To file: DM drafts",
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        1740,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "={{ $('Config').first().json.cfg.data_dir }}/dm-drafts.jsonl",
+        "dataPropertyName": "data",
+        "options": {
+          "append": true
+        }
+      },
+      "id": "21ad72fb-1cc3-5d56-a118-657adc7dc1ff",
+      "name": "Append dm-drafts.jsonl",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        1960,
+        -100
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "campaign/meta-dm-approve",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "1da841e2-9868-5c35-a411-6b6fe7c3fc15",
+      "name": "Webhook — approve DM",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -240,
+        640
+      ],
+      "webhookId": "1b23c947-d5a1-5387-b4bb-0a9453a54c51"
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cfg",
+              "name": "cfg",
+              "value": "={{ {\n  ledger_url: '',\n  dovy_email: 'hello@doviloop.dev',\n  from_email: 'campaign-bot@doviloop.dev',\n  data_dir: '/home/node/.n8n/campaign',\n  meta_graph_version: 'v21.0',\n  ig_user_id: '',\n  fb_page_id: '',\n  landing_url: 'https://teams.doviloop.dev',\n  keywords: ['draft', 'drafts', 'demo', 'outlook', 'info'],\n  rate_limit_days: 90,\n  approve_base: ''\n} }}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "3f7c286f-7eec-554b-935c-766c0a17498a",
+      "name": "Config approve",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -20,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "/* WF-C4 · Redeem an approval token. One shot, then it is gone.\n\n   Also re-checks the rate limit at redemption time, so two approval emails\n   opened in the wrong order still cannot produce two DMs. */\n\nconst cfg = $('Config approve').first().json.cfg || {};\nconst store = $getWorkflowStaticData('global');\nstore.pending = store.pending || {};\nstore.dmSent = store.dmSent || {};\n\nconst out = [];\nfor (const item of $input.all()) {\n  const q = (item.json && item.json.query) || {};\n  const token = String(q.t || '').trim();\n  const draft = token ? store.pending[token] : null;\n  const reasons = [];\n\n  if (!token) reasons.push('no token');\n  else if (!draft) reasons.push('this approval link has already been used, or has expired');\n\n  if (draft) {\n    const windowMs = Number(cfg.rate_limit_days || 90) * 24 * 3600 * 1000;\n    const last = store.dmSent[draft.rate_key];\n    if (last && (Date.now() - Date.parse(last)) < windowMs) {\n      reasons.push('this person was already messaged on ' + last);\n    }\n  }\n\n  const okToSend = reasons.length === 0;\n  if (okToSend) {\n    // Burn the token and stamp the rate limit BEFORE the send call, so a retry\n    // or a double click cannot produce a second DM.\n    delete store.pending[token];\n    store.dmSent[draft.rate_key] = new Date().toISOString();\n  }\n\n  out.push({ json: {\n    cfg: cfg,\n    approved: okToSend,\n    reasons: reasons,\n    draft: draft || null,\n    ack_html: '<!doctype html><meta charset=\"utf-8\"><body style=\"font-family:system-ui,' +\n      'sans-serif;max-width:520px;margin:12vh auto;padding:0 20px;line-height:1.6\">' +\n      (okToSend\n        ? '<h1 style=\"font-size:22px\">Sending.</h1><p>The DM is on its way to ' +\n          String(draft.user_name || draft.user_id).replace(/</g, '&lt;') + '.</p>'\n        : '<h1 style=\"font-size:22px\">Not sent.</h1><p>' +\n          reasons.map(r => r.replace(/</g, '&lt;')).join('<br>') + '</p>') +\n      '</body>',\n  } });\n}\nreturn out;\n"
+      },
+      "id": "e7564055-caf7-5efe-9bb8-7be2dc100286",
+      "name": "Redeem approval token",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        200,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseCode": 200,
+        "responseBody": "={{ $json.ack_html }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=utf-8"
+              }
+            ]
+          }
+        }
+      },
+      "id": "659e2183-8142-51ea-ba8c-aaab04431880",
+      "name": "Respond: approval result",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        420,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "1e62483d-8e88-5571-9a13-35eb05db7fb0",
+              "leftValue": "={{ $json.approved }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "a17e3a04-0418-544e-9362-a891e552568f",
+      "name": "IF approved",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        640,
+        640
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "4e3b42b8-f106-5f54-b709-2ac80798ffcf",
+      "name": "Not approved, nothing sent",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        860,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/{{ $json.cfg.meta_graph_version }}/{{ $json.draft.platform === 'instagram' ? $json.cfg.ig_user_id : $json.cfg.fb_page_id }}/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ recipient: { comment_id: $json.draft.comment_id }, message: { text: $json.draft.dm_text } }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "8dbf3a60-0461-5a4f-9e60-dc9e7688b435",
+      "name": "Meta: send private reply",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        860,
+        560
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Meta Graph API page token"
+        }
+      },
+      "alwaysOutputData": true,
+      "notes": "A private reply to a comment. Meta only allows one per comment, which is a second, platform-side guarantee that nobody gets two."
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const out = [];\nfor (const item of $input.all()) {\n  const res = item.json || {};\n  const prev = $('Redeem approval token').first().json;\n  out.push({ json: Object.assign({}, prev, {\n    send_result: {\n      ok: !!res.message_id && !res.error,\n      message_id: res.message_id || null,\n      error: res.error ? JSON.stringify(res.error).slice(0, 300) : null,\n    },\n  }) });\n}\nreturn out;\n"
+      },
+      "id": "060e78fd-d45a-5bd2-a66a-f3817f71ab05",
+      "name": "Read send result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1080,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "/* WF-C4 · Log the touch. AND WHY IT DOES NOT GO INTO campaign.touches.\n\n   The spec says \"log a touch\". It cannot go into campaign.touches, for two\n   independent reasons, both read out of Batch B's 001_schema.sql:\n\n   1. `touches.contact_id` is NOT NULL and references campaign.contacts, whose\n      `company_id` is in turn NOT NULL and references campaign.companies. An\n      Instagram commenter is an anonymous platform handle. To insert one touch\n      this workflow would have to invent a company row and a contact row for a\n      person whose name, firm and email it does not know, and campaign.companies\n      requires a real `domain` with a CHECK constraint on its shape. Inventing\n      those would put fabricated firms into the same table the ICP finder and\n      the Friday brief count.\n\n   2. `touches.channel` is the enum campaign.touch_channel, whose four values\n      are linkedin_connect, linkedin_dm, email and phone. There is no\n      instagram_dm and no facebook_dm, and B's comment on the type says the\n      taxonomy is shared with the outreach engine and must not be extended\n      without checking that repo's classifier first.\n\n   So this is journalled to a file instead, in the exact shape a future insert\n   would take, and the two schema gaps are named in BLOCKED.md (F-7) and\n   proposed in sql/004_consent.sql. Nothing is fabricated into the ledger. */\n\nconst out = [];\nfor (const item of $input.all()) {\n  const j = item.json || {};\n  const d = j.draft || {};\n  const sendRes = j.send_result || {};\n  out.push({ json: Object.assign({}, j, {\n    line: JSON.stringify({\n      touched_at: new Date().toISOString(),\n      channel: d.platform === 'instagram' ? 'instagram_dm' : 'facebook_dm',\n      platform_user_id: d.user_id,\n      platform_user_name: d.user_name,\n      comment_id: d.comment_id,\n      content_id: d.content_id,\n      content_natural_key: d.content_natural_key,\n      landing_link: d.landing_link,\n      utm: d.utm,\n      message_id: sendRes.message_id || null,\n      delivered: !!sendRes.ok,\n      error: sendRes.error || null,\n      not_in_campaign_touches_because: [\n        'touches.contact_id is NOT NULL and needs a contacts row, which needs a companies row',\n        'touch_channel enum has no instagram_dm / facebook_dm value',\n      ],\n    }),\n  }) });\n}\nreturn out;\n"
+      },
+      "id": "eabbc78a-1188-52a6-bf44-a9dcf0d64095",
+      "name": "Log the touch (journal)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1300,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "toText",
+        "sourceProperty": "line",
+        "options": {
+          "fileName": "social-dm-touches.jsonl",
+          "encoding": "utf8"
+        }
+      },
+      "id": "209b5b5d-fc80-5ca9-a155-d18ebf5081d3",
+      "name": "To file: social touches",
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        1520,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "={{ $('Config approve').first().json.cfg.data_dir }}/social-dm-touches.jsonl",
+        "dataPropertyName": "data",
+        "options": {
+          "append": true
+        }
+      },
+      "id": "f704a994-f912-5b4c-88af-96ff299fcf12",
+      "name": "Append social-dm-touches.jsonl",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        1740,
+        560
+      ],
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "Webhook — Meta verify": {
+      "main": [
+        [
+          {
+            "node": "Respond: hub.challenge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook — Meta comments": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Match keyword + rate limit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Match keyword + rate limit": {
+      "main": [
+        [
+          {
+            "node": "IF keyword matched",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF keyword matched": {
+      "main": [
+        [
+          {
+            "node": "Ledger: find the reel",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No match, do nothing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ledger: find the reel": {
+      "main": [
+        [
+          {
+            "node": "Merge lookup onto the comment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge lookup onto the comment": {
+      "main": [
+        [
+          {
+            "node": "Build DM draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build DM draft": {
+      "main": [
+        [
+          {
+            "node": "Park draft against a token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Park draft against a token": {
+      "main": [
+        [
+          {
+            "node": "Send: approve this DM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send: approve this DM": {
+      "main": [
+        [
+          {
+            "node": "To file: DM drafts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "To file: DM drafts": {
+      "main": [
+        [
+          {
+            "node": "Append dm-drafts.jsonl",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook — approve DM": {
+      "main": [
+        [
+          {
+            "node": "Config approve",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config approve": {
+      "main": [
+        [
+          {
+            "node": "Redeem approval token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redeem approval token": {
+      "main": [
+        [
+          {
+            "node": "Respond: approval result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond: approval result": {
+      "main": [
+        [
+          {
+            "node": "IF approved",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF approved": {
+      "main": [
+        [
+          {
+            "node": "Meta: send private reply",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Not approved, nothing sent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Meta: send private reply": {
+      "main": [
+        [
+          {
+            "node": "Read send result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read send result": {
+      "main": [
+        [
+          {
+            "node": "Log the touch (journal)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log the touch (journal)": {
+      "main": [
+        [
+          {
+            "node": "To file: social touches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "To file: social touches": {
+      "main": [
+        [
+          {
+            "node": "Append social-dm-touches.jsonl",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Copenhagen",
+    "saveManualExecutions": true,
+    "saveExecutionProgress": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all"
+  },
+  "pinData": {},
+  "tags": [],
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "versionId": "0d67660a-38fe-5238-81f1-5d925d915412"
+}

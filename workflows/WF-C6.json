@@ -1,0 +1,629 @@
+{
+  "name": "WF-C6 — Friday brief (snapshot, then render, then send)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 16 * * 5"
+            }
+          ]
+        }
+      },
+      "id": "1bbce8f4-b8f9-5b25-a112-236b76ba7a3a",
+      "name": "Schedule: Friday 16:00 CET",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -240,
+        0
+      ],
+      "notes": "Workflow timezone is Europe/Copenhagen, so this is 16:00 CET / CEST."
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cfg",
+              "name": "cfg",
+              "value": "={{ {\n  ledger_url: '',\n  dovy_email: 'hello@doviloop.dev',\n  from_email: 'campaign-bot@doviloop.dev',\n  data_dir: '/home/node/.n8n/campaign',\n  python_bin: 'python3',\n  ledger_repo: '/opt/campaign/campaign-ledger',\n  ad_engine_repo: '/opt/campaign/ad-engine',\n  meta_graph_version: 'v21.0'\n} }}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "accd6078-4d69-578a-9056-219bc451c4f2",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -20,
+        0
+      ],
+      "notes": "ledger_repo and ad_engine_repo are paths ON THE N8N HOST. n8n cannot run a script it cannot see. See README, 'WF-C6 needs the repos on disk'."
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Refuses to run against the product database, and refuses to run unconfigured.\n//\n// This mirrors the same refusal Batch B built into campaign_db.py\n// (_FORBIDDEN_PROJECT_REF). Two independent layers now have to be defeated\n// before a campaign workflow can touch the product project by accident.\nconst FORBIDDEN = 'kngcxwcybozgqgnoweyt';\n\nconst out = [];\nfor (const item of $input.all()) {\n  const cfg = (item.json && item.json.cfg) || {};\n  const url = String(cfg.ledger_url || '').trim();\n\n  if (!url) {\n    throw new Error(\n      'Config.ledger_url is blank. Open the Config node and paste the CAMPAIGN ' +\n      'ledger project URL (the lead-pipeline project, schema \"campaign\"). It ships ' +\n      'blank on purpose so an unreviewed import cannot reach any database.');\n  }\n  if (url.includes(FORBIDDEN)) {\n    throw new Error(\n      'Config.ledger_url points at the PRODUCT database (' + FORBIDDEN + '). ' +\n      'The campaign ledger is a different project. Refusing to run.');\n  }\n  if (!/^https:\\/\\//.test(url)) {\n    throw new Error('Config.ledger_url must be https, got: ' + url);\n  }\n  out.push(item);\n}\nreturn out;\n"
+      },
+      "id": "16adfcca-1138-541d-9b6a-83794cdb6976",
+      "name": "Guard: ledger target",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        200,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.cfg.ledger_url }}/rest/v1/content?published_at=not.is.null&buffer_id=not.is.null&select=*",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "fullResponse": true
+            }
+          },
+          "timeout": 20000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept-Profile",
+              "value": "campaign"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        }
+      },
+      "id": "2896a927-1738-5296-acf4-bbf6cb471519",
+      "name": "Ledger: published content",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        420,
+        0
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "name": "Campaign Ledger (Supabase, campaign schema)"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "/* WF-C6 · Fan out published content into one stats request per platform post.\n\n   WF-C3 packs the per-channel ids into campaign.content.buffer_id as\n   \"instagram=123;linkedin=456\", because that column is a single text field and\n   one reel goes to up to four channels. This unpacks it again.\n\n   Only Meta and YouTube ids can be turned into numbers here. LinkedIn's\n   organic post analytics need a Marketing Developer Platform approval that this\n   account does not have, so LinkedIn rows are emitted with a `skipped` flag and\n   counted in the report rather than silently dropped. See BLOCKED.md F-10. */\n\nconst cfg = $('Config').first().json.cfg || {};\nconst rows = [];\nfor (const item of $input.all()) {\n  const b = item.json && item.json.body !== undefined ? item.json.body : item.json;\n  if (Array.isArray(b)) rows.push(...b);\n  else if (b && b.id) rows.push(b);\n}\n\nconst today = new Date().toISOString().slice(0, 10);\nconst out = [];\nlet skipped = 0;\n\nfor (const row of rows) {\n  if (!row.published_at || !row.buffer_id) continue;\n  for (const pair of String(row.buffer_id).split(';')) {\n    const [platform, postId] = pair.split('=');\n    if (!platform || !postId) continue;\n    const supported = platform === 'instagram' || platform === 'facebook' ||\n                      platform === 'youtube_shorts';\n    if (!supported) { skipped++; continue; }\n    out.push({ json: {\n      cfg: cfg,\n      content_id: row.id,\n      natural_key: row.natural_key,\n      platform: platform,\n      post_id: postId,\n      captured_on: today,\n    } });\n  }\n}\n\nout.push({ json: { cfg: cfg, __stats_summary: true, requests: out.length,\n                   skipped_linkedin: skipped, captured_on: today } });\nreturn out;\n"
+      },
+      "id": "46c4e4e4-e206-5bde-b822-72e480bfa308",
+      "name": "Fan out published posts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "8e865273-62b7-51c6-9f7e-07a25792c6ab",
+              "leftValue": "={{ $json.__stats_summary !== true && !!$json.post_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "f5f6090a-b462-574b-81ab-4a47bbe9f098",
+      "name": "IF a stat to fetch",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        860,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "29f63409-088e-5b22-af53-b2855bccc5e4",
+              "leftValue": "={{ $json.platform === 'youtube_shorts' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "ab91c693-1737-5796-b9b6-51179765e8de",
+      "name": "IF YouTube",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1080,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://www.googleapis.com/youtube/v3/videos",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "youTubeOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "part",
+              "value": "statistics"
+            },
+            {
+              "name": "id",
+              "value": "={{ $json.post_id }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          },
+          "timeout": 20000
+        }
+      },
+      "id": "f8011ccc-f925-5c8a-aa08-4ef426abc1f0",
+      "name": "YouTube: video statistics",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1300,
+        -220
+      ],
+      "credentials": {
+        "youTubeOAuth2Api": {
+          "name": "YouTube Data API (campaign)"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://graph.facebook.com/{{ $json.cfg.meta_graph_version }}/{{ $json.post_id }}/insights",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "metric",
+              "value": "={{ $json.platform === 'instagram' ? 'plays,likes,comments,saved,reach' : 'post_impressions,post_reactions_like_total,post_clicks' }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          },
+          "timeout": 20000
+        }
+      },
+      "id": "a661d628-4d85-5581-a0b7-cc2b60da6c0c",
+      "name": "Meta: post insights",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1300,
+        -20
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Meta Graph API page token"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "/* WF-C6 · Normalise a platform insights response into a campaign.content_stats row.\n\n   The column list is Batch B's, exactly: content_id, platform, captured_on,\n   views, likes, comments, saves, clicks, with a unique constraint on\n   (content_id, platform, captured_on) and a CHECK that every number is >= 0.\n   Anything a platform does not report becomes 0, which the schema's default\n   already is, rather than being invented. */\n\nfunction metaMetric(res, names) {\n  const data = (res && res.data) || [];\n  for (const entry of data) {\n    if (names.includes(entry.name)) {\n      const v = entry.values && entry.values[0];\n      const n = v && (v.value != null ? v.value : v);\n      if (typeof n === 'number') return n;\n      if (n && typeof n.value === 'number') return n.value;\n    }\n  }\n  return 0;\n}\n\nconst out = [];\nfor (const item of $input.all()) {\n  const ctx = $('Fan out published posts').item.json;\n  const res = item.json && item.json.body !== undefined ? item.json.body : item.json;\n\n  let views = 0, likes = 0, comments = 0, saves = 0, clicks = 0;\n\n  if (ctx.platform === 'youtube_shorts') {\n    const s = (res && res.items && res.items[0] && res.items[0].statistics) || {};\n    views = Number(s.viewCount || 0);\n    likes = Number(s.likeCount || 0);\n    comments = Number(s.commentCount || 0);\n  } else {\n    views = metaMetric(res, ['plays', 'video_views', 'reach', 'impressions',\n                             'post_impressions', 'ig_reels_video_view_total_time']);\n    likes = metaMetric(res, ['likes', 'post_reactions_like_total']);\n    comments = metaMetric(res, ['comments']);\n    saves = metaMetric(res, ['saved', 'saves']);\n    clicks = metaMetric(res, ['post_clicks', 'website_clicks', 'clicks']);\n  }\n\n  const nonNeg = (n) => Math.max(0, Math.round(Number(n) || 0));\n\n  out.push({ json: {\n    cfg: ctx.cfg,\n    row: {\n      content_id: ctx.content_id,\n      platform: ctx.platform,\n      captured_on: ctx.captured_on,\n      views: nonNeg(views), likes: nonNeg(likes), comments: nonNeg(comments),\n      saves: nonNeg(saves), clicks: nonNeg(clicks),\n    },\n    fetch_error: (res && res.error) ? JSON.stringify(res.error).slice(0, 200) : null,\n  } });\n}\nreturn out;\n"
+      },
+      "id": "d703f433-f93a-5005-a379-f9557d5fae7b",
+      "name": "Normalise stats row",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1520,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.cfg.ledger_url }}/rest/v1/content_stats?on_conflict=content_id,platform,captured_on",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "fullResponse": true
+            }
+          },
+          "timeout": 20000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Profile",
+              "value": "campaign"
+            },
+            {
+              "name": "Accept-Profile",
+              "value": "campaign"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates,return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify([$json.row]) }}"
+      },
+      "id": "2bfaec1f-b919-5943-9cec-8503c056ab92",
+      "name": "Ledger: upsert content_stats",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1740,
+        -120
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "name": "Campaign Ledger (Supabase, campaign schema)"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {},
+      "id": "4d212c8d-288f-5792-8f90-2654243dd5b0",
+      "name": "Snapshot done",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1960,
+        0
+      ],
+      "notes": "Both stat branches and the no-stats branch land here, so the ad pull and the brief cannot start before the snapshot has finished."
+    },
+    {
+      "parameters": {
+        "command": "=cd {{ $('Config').first().json.cfg.ad_engine_repo }} && {{ $('Config').first().json.cfg.python_bin }} report/pull_ad_stats.py --date {{ $now.minus(1, 'days').toFormat('yyyy-MM-dd') }} 2>&1",
+        "executeOnce": true
+      },
+      "id": "e5c56759-90ee-5fea-ba67-703a699259a3",
+      "name": "Run: pull_ad_stats.py (Batch E)",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        2180,
+        0
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true,
+      "notes": "Batch E's script. --dry-run reads a fixture and writes nothing, which is the safe way to test this node before the Meta account exists."
+    },
+    {
+      "parameters": {
+        "command": "=cd {{ $('Config').first().json.cfg.ledger_repo }} && {{ $('Config').first().json.cfg.python_bin }} src/friday_brief.py",
+        "executeOnce": true
+      },
+      "id": "005d1f77-9d55-5183-8115-9ac7f20d050d",
+      "name": "Run: friday_brief.py (Batch B)",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        2400,
+        0
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true,
+      "notes": "Prints the markdown to stdout AND writes briefs/YYYY-MM-DD.md, so the brief survives even if the email fails."
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "/* WF-C6 · Render the brief's markdown as HTML.\n\n   friday_brief.py prints one page of markdown and n8n has no markdown node\n   guaranteed to be installed, so this converts the subset the brief actually\n   emits: h1 to h4, GitHub-style tables, bullet lists, bold, inline code,\n   horizontal rules and paragraphs. Anything it does not recognise is passed\n   through escaped, so an unrecognised construct shows as text rather than\n   disappearing or breaking the layout.\n\n   The brief's own tone rule matters here: it prints a dash for an unknown\n   number rather than a fabricated zero. Those dashes are preserved. */\n\nfunction esc(s) {\n  return String(s == null ? '' : s)\n    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n}\nfunction inline(s) {\n  return esc(s)\n    .replace(/`([^`]+)`/g, '<code style=\"background:#f0f0f0;padding:1px 4px;border-radius:3px\">$1</code>')\n    .replace(/\\*\\*([^*]+)\\*\\*/g, '<b>$1</b>')\n    .replace(/\\[([^\\]]+)\\]\\(([^)]+)\\)/g, '<a href=\"$2\">$1</a>');\n}\nfunction isTableRow(l) { return /^\\s*\\|.*\\|\\s*$/.test(l); }\nfunction isDivider(l) { return /^\\s*\\|[\\s:|-]+\\|\\s*$/.test(l); }\nfunction cells(l) {\n  return l.trim().replace(/^\\|/, '').replace(/\\|$/, '').split('|').map(c => c.trim());\n}\n\nfunction render(md) {\n  const lines = String(md || '').split('\\n');\n  const html = [];\n  let i = 0;\n  let inList = false;\n\n  const closeList = () => { if (inList) { html.push('</ul>'); inList = false; } };\n\n  while (i < lines.length) {\n    const line = lines[i];\n\n    if (isTableRow(line) && i + 1 < lines.length && isDivider(lines[i + 1])) {\n      closeList();\n      const head = cells(line);\n      i += 2;\n      const body = [];\n      while (i < lines.length && isTableRow(lines[i])) { body.push(cells(lines[i])); i++; }\n      html.push(\n        '<table cellpadding=\"7\" style=\"border-collapse:collapse;margin:14px 0;font-size:13px\">' +\n        '<tr>' + head.map(h =>\n          '<th align=\"left\" style=\"border-bottom:2px solid #333;white-space:nowrap\">' +\n          inline(h) + '</th>').join('') + '</tr>' +\n        body.map(r => '<tr>' + r.map(c =>\n          '<td style=\"border-bottom:1px solid #eee;white-space:nowrap\">' +\n          inline(c) + '</td>').join('') + '</tr>').join('') +\n        '</table>');\n      continue;\n    }\n\n    const h = /^(#{1,4})\\s+(.*)$/.exec(line);\n    if (h) {\n      closeList();\n      const level = h[1].length;\n      const size = [22, 18, 15.5, 14][level - 1];\n      html.push('<h' + level + ' style=\"font-size:' + size + 'px;margin:22px 0 8px\">' +\n        inline(h[2]) + '</h' + level + '>');\n      i++; continue;\n    }\n\n    if (/^\\s*[-*]\\s+/.test(line)) {\n      if (!inList) { html.push('<ul style=\"margin:8px 0 8px 18px;padding:0\">'); inList = true; }\n      html.push('<li style=\"margin:3px 0\">' + inline(line.replace(/^\\s*[-*]\\s+/, '')) + '</li>');\n      i++; continue;\n    }\n\n    if (/^\\s*(-{3,}|_{3,}|\\*{3,})\\s*$/.test(line)) {\n      closeList();\n      html.push('<hr style=\"border:none;border-top:1px solid #ddd;margin:20px 0\">');\n      i++; continue;\n    }\n\n    if (line.trim() === '') { closeList(); i++; continue; }\n\n    closeList();\n    const para = [];\n    while (i < lines.length && lines[i].trim() !== '' && !isTableRow(lines[i]) &&\n           !/^#{1,4}\\s/.test(lines[i]) && !/^\\s*[-*]\\s+/.test(lines[i])) {\n      para.push(lines[i]); i++;\n    }\n    html.push('<p style=\"margin:9px 0\">' + inline(para.join(' ')) + '</p>');\n  }\n  closeList();\n  return html.join('\\n');\n}\n\nconst cfg = $('Config').first().json.cfg || {};\nconst item = $input.first().json || {};\nconst md = String(item.stdout || '');\nconst stderr = String(item.stderr || '');\nconst failed = !md.trim();\n\nconst statsSummary = ($('Fan out published posts').all().map(i => i.json)\n  .find(j => j && j.__stats_summary)) || {};\nconst adOut = $('Run: pull_ad_stats.py (Batch E)').first().json || {};\n\nconst preamble =\n  '<div style=\"font-family:system-ui,-apple-system,Segoe UI,sans-serif;font-size:14px;' +\n  'line-height:1.6;color:#1a1a1a;max-width:820px\">' +\n  '<p style=\"font-size:12px;color:#777;border-bottom:1px solid #eee;padding-bottom:10px\">' +\n  'Snapshot ran first: ' + (statsSummary.requests || 0) + ' post stat request(s), ' +\n  (statsSummary.skipped_linkedin || 0) + ' LinkedIn post(s) skipped (no analytics API). ' +\n  'Ad stats pull exit code ' + (adOut.exitCode == null ? 'unknown' : adOut.exitCode) + '.' +\n  '</p>';\n\nreturn [{ json: {\n  cfg: cfg,\n  brief_ok: !failed,\n  brief_subject: '[DoviLoop] Friday brief, ' + new Date().toISOString().slice(0, 10) +\n    (failed ? ' — FAILED TO RENDER' : ''),\n  brief_html: failed\n    ? preamble + '<p><b>friday_brief.py produced no output.</b></p><pre style=\"white-space:pre-wrap;' +\n      'background:#f6f6f6;padding:12px;font-size:12px\">' + esc(stderr || '(no stderr)') +\n      '</pre><p>The snapshot above still ran, so nothing is lost. Run it by hand:<br>' +\n      '<code>' + esc(cfg.python_bin + ' src/friday_brief.py') + '</code> in ' +\n      esc(cfg.ledger_repo) + '</p></div>'\n    : preamble + render(md) +\n      '<p style=\"font-size:12px;color:#777;margin-top:24px;border-top:1px solid #eee;' +\n      'padding-top:10px\">Rendered by WF-C6 from friday_brief.py. ' +\n      'The markdown original is in ' + esc(cfg.ledger_repo) + '/briefs/.</p></div>',\n} }];\n"
+      },
+      "id": "9d0dd143-ea59-5eb2-9121-f28410395be3",
+      "name": "Markdown to HTML",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2620,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $json.cfg.from_email }}",
+        "toEmail": "={{ $json.cfg.dovy_email }}",
+        "subject": "={{ $json.brief_subject }}",
+        "emailFormat": "html",
+        "html": "={{ $json.brief_html }}",
+        "options": {}
+      },
+      "id": "8c274ec0-b39a-5418-9caf-37adc1429748",
+      "name": "Send: Friday brief",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        2840,
+        0
+      ],
+      "credentials": {
+        "smtp": {
+          "name": "DoviLoop campaign SMTP"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule: Friday 16:00 CET": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Guard: ledger target",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guard: ledger target": {
+      "main": [
+        [
+          {
+            "node": "Ledger: published content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ledger: published content": {
+      "main": [
+        [
+          {
+            "node": "Fan out published posts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fan out published posts": {
+      "main": [
+        [
+          {
+            "node": "IF a stat to fetch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF a stat to fetch": {
+      "main": [
+        [
+          {
+            "node": "IF YouTube",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Snapshot done",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF YouTube": {
+      "main": [
+        [
+          {
+            "node": "YouTube: video statistics",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Meta: post insights",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "YouTube: video statistics": {
+      "main": [
+        [
+          {
+            "node": "Normalise stats row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Meta: post insights": {
+      "main": [
+        [
+          {
+            "node": "Normalise stats row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalise stats row": {
+      "main": [
+        [
+          {
+            "node": "Ledger: upsert content_stats",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ledger: upsert content_stats": {
+      "main": [
+        [
+          {
+            "node": "Snapshot done",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Snapshot done": {
+      "main": [
+        [
+          {
+            "node": "Run: pull_ad_stats.py (Batch E)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run: pull_ad_stats.py (Batch E)": {
+      "main": [
+        [
+          {
+            "node": "Run: friday_brief.py (Batch B)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run: friday_brief.py (Batch B)": {
+      "main": [
+        [
+          {
+            "node": "Markdown to HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Markdown to HTML": {
+      "main": [
+        [
+          {
+            "node": "Send: Friday brief",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Copenhagen",
+    "saveManualExecutions": true,
+    "saveExecutionProgress": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all"
+  },
+  "pinData": {},
+  "tags": [],
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "versionId": "803ac5e9-b1af-5c41-b8fc-fcf644d71fc0"
+}

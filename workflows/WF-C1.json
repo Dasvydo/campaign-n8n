@@ -1,0 +1,792 @@
+{
+  "name": "WF-C1 — Qualifier intake (teams.doviloop.dev)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "campaign/qualifier",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": false,
+          "allowedOrigins": "*"
+        }
+      },
+      "id": "e48f4299-63c3-5229-ac5d-28573c8ee913",
+      "name": "Webhook — qualifier",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -200,
+        0
+      ],
+      "notes": "Production URL goes into Batch A's VITE_LEAD_WEBHOOK_URL.",
+      "webhookId": "8d8436b7-c791-5521-8e9a-773f993600e5"
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cfg",
+              "name": "cfg",
+              "value": "={{ {\n  ledger_url: '',\n  dovy_email: 'hello@doviloop.dev',\n  from_email: 'campaign-bot@doviloop.dev',\n  data_dir: '/home/node/.n8n/campaign',\n  dedupe_ttl_hours: 72\n} }}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "97423a95-86d3-51e8-bab7-a830ffc09779",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        20,
+        0
+      ],
+      "notes": "ledger_url ships BLANK on purpose. Fill it with the CAMPAIGN project URL, never the product one."
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "/* ------------------------------------------------------------------------\n   WF-C1 · Validate and route\n   ------------------------------------------------------------------------\n   Contract: campaign-specs/00-START-HERE.md, implemented in\n   campaign-site/src/lib/contract.ts. The enum labels below were copied from\n   Batch B's campaign-ledger/migrations/001_schema.sql, which is the thing that\n   will actually reject a bad value, not from the spec prose.\n\n   THREE THINGS THIS NODE OWNS\n\n   1. It never throws. A throw here aborts the execution, the webhook never\n      answers, and the lead is gone. Everything is caught and turned into an\n      `ok: false` item that the malformed branch can still write down and mail\n      to Dovy. \"Never lose a lead\" is the whole point of this node.\n\n   2. natural_key is byte-for-byte what Batch B computes in\n      campaign_db.insert_lead:  lower(trim(work_email)) + '|' + submitted_at\n      with submitted_at passed through VERBATIM. B's _iso() returns str(value)\n      unchanged for a string input, so normalising the timestamp here (adding a\n      Z, dropping millis, re-serialising) would produce a DIFFERENT key and\n      break dedupe against anything B wrote. Do not \"tidy\" it.\n\n   3. stage is Batch B's shape, not the spec's. B modelled gmail_on_request as a\n      VALUE of the lead_stage enum ('qualified' | 'gmail_on_request' |\n      'too_small'), where 00-START-HERE.md described it as a flag on a qualified\n      lead. B's shape is what the database has, and 001_schema.sql has a CHECK\n      constraint tying too_small to team_size 1-9. Follow the code.\n   ------------------------------------------------------------------------ */\n\nconst ENUMS = {\n  source:       ['reel', 'ad', 'outreach', 'direct'],\n  market:       ['dk', 'lt', 'global'],\n  locale:       ['en', 'da', 'lt'],\n  team_size:    ['1-9', '10-24', '25-49', '50+'],\n  email_client: ['outlook', 'gmail', 'other'],\n  role:         ['owner_partner', 'ops_office_manager', 'it_admin', 'other'],\n};\nconst TOP_LEVEL = ['source', 'market', 'locale', 'utm', 'company_name',\n  'work_email', 'phone', 'team_size', 'email_client', 'role', 'submitted_at'];\nconst UTM_KEYS = ['source', 'medium', 'campaign', 'content'];\n\n// NOT NULL in campaign.leads, so a missing one is fatal at the database even\n// though campaign_db._check() would let it through as None.\nconst REQUIRED_ENUMS = ['source', 'market', 'locale', 'team_size', 'email_client'];\n\nfunction routeStage(team_size, email_client) {\n  if (team_size === '1-9') return 'too_small';\n  return email_client === 'outlook' ? 'qualified' : 'gmail_on_request';\n}\n\nfunction siteFromEmail(workEmail) {\n  const at = String(workEmail || '').lastIndexOf('@');\n  if (at < 0) return null;\n  const domain = String(workEmail).slice(at + 1).trim().toLowerCase();\n  if (!domain || !domain.includes('.')) return null;\n  const free = ['gmail.com', 'outlook.com', 'hotmail.com', 'live.com',\n    'yahoo.com', 'icloud.com', 'me.com', 'proton.me', 'protonmail.com'];\n  if (free.includes(domain)) return null;   // a free mailbox is not a company site\n  return 'https://' + domain;\n}\n\nconst out = [];\n\nfor (const item of $input.all()) {\n  const raw = item.json || {};\n  const cfg = raw.cfg || {};\n  const headers = raw.headers || {};\n  // n8n lower-cases incoming header names.\n  const dedupeHeader = String(headers['x-doviloop-dedupe'] || '').trim();\n\n  let body = raw.body;\n  // A client that posts a JSON string, or n8n configured with rawBody, both\n  // arrive as text. Recover rather than reject.\n  if (typeof body === 'string') {\n    try { body = JSON.parse(body); } catch (e) { body = { __unparseable: raw.body }; }\n  }\n  if (body === null || typeof body !== 'object' || Array.isArray(body)) {\n    body = { __not_an_object: body };\n  }\n\n  const problems = [];\n\n  for (const key of TOP_LEVEL) {\n    if (!(key in body)) problems.push('missing key: ' + key);\n  }\n  for (const key of Object.keys(body)) {\n    // Unknown keys are recorded but are NOT fatal on their own: we strip them\n    // before the insert rather than bounce a real lead over an extra field.\n    if (!TOP_LEVEL.includes(key)) problems.push('unexpected key (ignored): ' + key);\n  }\n  for (const [key, allowed] of Object.entries(ENUMS)) {\n    if (key in body && body[key] != null && !allowed.includes(body[key])) {\n      problems.push(key + ' = ' + JSON.stringify(body[key]) +\n        ' is not one of ' + allowed.join(' | '));\n    }\n  }\n  for (const key of REQUIRED_ENUMS) {\n    if (body[key] == null || body[key] === '') problems.push(key + ' is required and empty');\n  }\n\n  const workEmail = String(body.work_email == null ? '' : body.work_email).trim().toLowerCase();\n  if (!workEmail) problems.push('work_email is required and empty');\n  else if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(workEmail)) problems.push('work_email is not an email address');\n\n  const companyName = String(body.company_name == null ? '' : body.company_name).trim();\n  if (!companyName) problems.push('company_name is required and empty');\n\n  const submittedAt = body.submitted_at;   // verbatim, see header note 2\n  if (typeof submittedAt !== 'string' || !submittedAt.trim()) {\n    problems.push('submitted_at is required and must be a string');\n  } else if (Number.isNaN(Date.parse(submittedAt))) {\n    problems.push('submitted_at is not parseable as ISO-8601');\n  }\n\n  const utm = (body.utm && typeof body.utm === 'object' && !Array.isArray(body.utm))\n    ? body.utm : {};\n  if (!body.utm || typeof body.utm !== 'object' || Array.isArray(body.utm)) {\n    problems.push('utm is not an object (treated as empty)');\n  } else {\n    for (const k of UTM_KEYS) if (!(k in utm)) problems.push('utm missing key: ' + k);\n  }\n\n  // Fatal = anything that would make the ledger row wrong or the insert fail.\n  // \"unexpected key (ignored)\" and a missing utm sub-key are not fatal.\n  const fatal = problems.filter(p =>\n    !p.startsWith('unexpected key (ignored)') && !p.startsWith('utm missing key'));\n\n  const ok = fatal.length === 0;\n\n  const stage = ok ? routeStage(body.team_size, body.email_client) : null;\n  const naturalKey = ok ? (workEmail + '|' + submittedAt) : null;\n\n  // TWO dedupe mechanisms, both used, per the reconciliation note.\n  //   primary   the per-submission id Batch A puts in X-DoviLoop-Dedupe\n  //             (campaign-site/src/lib/lead.ts:111). It is stable across A's\n  //             two send attempts AND across a drain of its localStorage\n  //             retry queue, so it is the strongest key available.\n  //   fallback  Batch B's derived key, for any caller that does not send the\n  //             header (a hand-run curl, a future integration, an old bundle).\n  const dedupeKey = dedupeHeader || naturalKey;\n  const dedupeSource = dedupeHeader ? 'header:X-DoviLoop-Dedupe' : 'derived:work_email+submitted_at';\n\n  const record = {\n    cfg,\n    ok,\n    problems,\n    fatal_problems: fatal,\n    dedupe_key: dedupeKey,\n    dedupe_source: dedupeSource,\n    received_at: new Date().toISOString(),\n    raw_body: body,\n    raw_headers: {\n      'x-doviloop-dedupe': dedupeHeader || null,\n      'user-agent': headers['user-agent'] || null,\n      'content-type': headers['content-type'] || null,\n    },\n  };\n\n  if (ok) {\n    record.outcome = stage;                 // qualified | gmail_on_request | too_small\n    record.natural_key = naturalKey;\n    record.company_site = siteFromEmail(workEmail);\n    // Exactly the columns campaign.leads has, nothing else. Nulls are stripped\n    // so a merge can never blank a known column, matching campaign_db._clean().\n    const row = {\n      company_name: companyName,\n      work_email: workEmail,\n      phone: (body.phone == null || String(body.phone).trim() === '') ? null : String(body.phone).trim(),\n      team_size: body.team_size,\n      email_client: body.email_client,\n      role: (body.role == null || body.role === '') ? null : body.role,\n      market: body.market,\n      locale: body.locale,\n      source: body.source,\n      utm_source: utm.source || null,\n      utm_medium: utm.medium || null,\n      utm_campaign: utm.campaign || null,\n      utm_content: utm.content || null,\n      stage: stage,\n      submitted_at: submittedAt,\n      natural_key: naturalKey,\n    };\n    for (const k of Object.keys(row)) if (row[k] === null) delete row[k];\n    record.lead_row = row;\n  }\n\n  out.push({ json: record });\n}\n\nreturn out;\n"
+      },
+      "id": "6ad78a05-329e-5b64-86df-47cbebbb1d01",
+      "name": "Validate and route",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "e92b3ef7-b301-5c6a-830e-fa4af3ea953c",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "f3f4d42a-c1a2-5d53-820a-edcfabb65df3",
+      "name": "IF payload valid",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        460,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Refuses to run against the product database, and refuses to run unconfigured.\n//\n// This mirrors the same refusal Batch B built into campaign_db.py\n// (_FORBIDDEN_PROJECT_REF). Two independent layers now have to be defeated\n// before a campaign workflow can touch the product project by accident.\nconst FORBIDDEN = 'kngcxwcybozgqgnoweyt';\n\nconst out = [];\nfor (const item of $input.all()) {\n  const cfg = (item.json && item.json.cfg) || {};\n  const url = String(cfg.ledger_url || '').trim();\n\n  if (!url) {\n    throw new Error(\n      'Config.ledger_url is blank. Open the Config node and paste the CAMPAIGN ' +\n      'ledger project URL (the lead-pipeline project, schema \"campaign\"). It ships ' +\n      'blank on purpose so an unreviewed import cannot reach any database.');\n  }\n  if (url.includes(FORBIDDEN)) {\n    throw new Error(\n      'Config.ledger_url points at the PRODUCT database (' + FORBIDDEN + '). ' +\n      'The campaign ledger is a different project. Refusing to run.');\n  }\n  if (!/^https:\\/\\//.test(url)) {\n    throw new Error('Config.ledger_url must be https, got: ' + url);\n  }\n  out.push(item);\n}\nreturn out;\n"
+      },
+      "id": "5caba09a-b05f-5bfb-a911-546e0ca2abe0",
+      "name": "Guard: ledger target",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        -200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.cfg.ledger_url }}/rest/v1/leads?on_conflict=natural_key",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "fullResponse": true
+            }
+          },
+          "timeout": 20000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Profile",
+              "value": "campaign"
+            },
+            {
+              "name": "Accept-Profile",
+              "value": "campaign"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=ignore-duplicates,return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify([$json.lead_row]) }}"
+      },
+      "id": "f85a03fe-3bd0-52a3-bf6e-a73a17a81a68",
+      "name": "Ledger: upsert lead",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        900,
+        -200
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "name": "Campaign Ledger (Supabase, campaign schema)"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "alwaysOutputData": true,
+      "notes": "Idempotency mechanism 2 of 2: the unique index on natural_key."
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "/* WF-C1 · Read ledger result.\n\n   The HTTP node runs with neverError + fullResponse, so a 409, a 401 or a 502\n   arrives here as data instead of killing the execution. That is deliberate:\n   the response to the browser and the notification to Dovy must both still\n   happen when the database is down.\n\n   PostgREST with Prefer: resolution=ignore-duplicates returns an EMPTY array\n   when the natural_key already existed. That is a successful dedupe, not a\n   failure, and it is the second of the two idempotency mechanisms: even if the\n   in-flight header check misses (two n8n workers, a restarted instance), the\n   unique index on campaign.leads.natural_key still collapses the duplicate. */\n\nconst out = [];\nfor (const item of $input.all()) {\n  const prev = $('Validate and route').all()[item.pairedItem ? 0 : 0].json;\n  const res = item.json || {};\n  const status = Number(res.statusCode || 0);\n  const payload = res.body;\n\n  const rows = Array.isArray(payload) ? payload : (payload ? [payload] : []);\n  const stored = status >= 200 && status < 300;\n  const deduped = stored && rows.length === 0;\n\n  out.push({\n    json: Object.assign({}, prev, {\n      ledger_status: status,\n      ledger_stored: stored,\n      ledger_deduped: deduped,\n      ledger_error: stored ? null :\n        ('HTTP ' + status + ': ' + JSON.stringify(payload).slice(0, 600)),\n      lead_id: (rows[0] && rows[0].id) || null,\n    }),\n  });\n}\nreturn out;\n"
+      },
+      "id": "95d946d8-714b-566a-9aff-96a4c1c374d9",
+      "name": "Read ledger result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        -200
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseCode": 200,
+        "responseBody": "={{ JSON.stringify({ ok: $json.ok, outcome: $json.outcome, stage: $json.outcome, lead_id: $json.lead_id, deduped: $json.ledger_deduped, shows_booking: $json.outcome !== 'too_small', nurture_started: false, stored: $json.ledger_stored }) }}",
+        "options": {}
+      },
+      "id": "26793c65-64e4-5bc6-a940-bb1b718c7a81",
+      "name": "Respond: routing outcome",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1340,
+        -200
+      ],
+      "notes": "Batch A renders its own screen from contract.ts route() and ignores this body. It is answered anyway for curl testing and for any future client."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "a7bd30b0-9b0c-58bd-b282-9d197a45c78e",
+              "leftValue": "={{ $json.ledger_stored }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "d5849b13-a276-5b10-b8f4-35ad067d7f21",
+      "name": "IF ledger stored",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1560,
+        -200
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "4121ef1e-b1c4-52cf-bcd3-1187448b09f6",
+              "leftValue": "={{ $json.outcome === 'too_small' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "1e2c79fb-5af4-5627-a4e3-4e3a2b671d70",
+      "name": "IF too small",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1780,
+        -320
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "/* WF-C1 · Park an under-10 lead. NO NURTURE IS STARTED HERE.\n\n   The spec says a `too_small` lead \"enters a 3-email nurture\". This node\n   deliberately does not do that, and WF-C2 will refuse the lead if it is\n   handed one without proof of opt-in. The reason, in full, is in README.md\n   under \"Consent\" and in BLOCKED.md F-4. In short:\n\n     * the shared contract has no consent field, so nothing on the wire says\n       this person agreed to be emailed;\n     * Batch A reached the same conclusion independently and refused to\n       auto-enrol: the 1-9 result screen offers an explicit opt-in instead\n       (campaign-site/src/components/Qualifier.tsx, `nurtureHref`), and that\n       opt-in is a mailto to hello@doviloop.dev, so it never reaches this\n       webhook at all;\n     * for market 'dk' this is not a preference. Denmark's marketing law is the\n       stated reason this whole campaign bans Danish cold email. Enrolling a\n       Danish address off a form that never asked is the same exposure the ban\n       exists to avoid.\n\n   So the lead is written down, and nothing is sent. The opt-in arrives in\n   Dovy's inbox as an email he can see, and he starts WF-C2 by hand. */\n\nconst out = [];\nfor (const item of $input.all()) {\n  const j = item.json || {};\n  const row = j.lead_row || {};\n  out.push({\n    json: Object.assign({}, j, {\n      parked: true,\n      parked_reason: 'too_small: no opt-in signal exists on the qualifier contract',\n      nurture_started: false,\n      line: JSON.stringify({\n        parked_at: new Date().toISOString(),\n        work_email: row.work_email || null,\n        company_name: row.company_name || null,\n        market: row.market || null,\n        locale: row.locale || null,\n        source: row.source || null,\n        team_size: row.team_size || null,\n        lead_id: j.lead_id || null,\n        natural_key: j.natural_key || null,\n        awaiting: 'explicit opt-in before WF-C2 may send anything',\n      }),\n    }),\n  });\n}\nreturn out;\n"
+      },
+      "id": "9ba087bf-5fc8-5d35-b1ca-96b4f3c46132",
+      "name": "Park: no nurture without opt-in",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2000,
+        -220
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "toText",
+        "sourceProperty": "line",
+        "options": {
+          "fileName": "parked-under-10.jsonl",
+          "encoding": "utf8"
+        }
+      },
+      "id": "3d48d849-87fb-5cb7-98a4-9edf905ab7af",
+      "name": "To file: parked lead",
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        2220,
+        -220
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "={{ $('Config').first().json.cfg.data_dir }}/parked-under-10.jsonl",
+        "dataPropertyName": "data",
+        "options": {
+          "append": true
+        }
+      },
+      "id": "78d24940-7778-5948-afa2-cc584823517b",
+      "name": "Append parked-under-10.jsonl",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        2440,
+        -220
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "/* WF-C1 · Build the notification to Dovy for a 10+ seat lead. */\n\nconst SIZE_LABEL = { '10-24': '10 to 24 seats', '25-49': '25 to 49 seats', '50+': '50 or more seats' };\nconst MARKET_LABEL = { dk: 'Denmark', lt: 'Lithuania', global: 'US / global' };\nconst ROLE_LABEL = {\n  owner_partner: 'Owner or partner', ops_office_manager: 'Ops or office manager',\n  it_admin: 'IT admin', other: 'Other',\n};\n\nfunction esc(s) {\n  return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n}\n\nconst out = [];\nfor (const item of $input.all()) {\n  const j = item.json || {};\n  const r = j.lead_row || {};\n  const market = MARKET_LABEL[r.market] || r.market || 'unknown market';\n  const size = SIZE_LABEL[r.team_size] || r.team_size || 'unknown size';\n\n  // Subject carries market and team size, per the spec.\n  const subject = '[Lead] ' + market + ' · ' + size + ' · ' + (r.company_name || 'unknown company') +\n    (j.outcome === 'gmail_on_request' ? ' · Gmail' : '');\n\n  const rows = [\n    ['Company', esc(r.company_name)],\n    ['Site', j.company_site ? '<a href=\"' + esc(j.company_site) + '\">' + esc(j.company_site) + '</a>'\n      : '<i>not derivable from the email domain</i>'],\n    ['Work email', '<a href=\"mailto:' + esc(r.work_email) + '\">' + esc(r.work_email) + '</a>'],\n    ['Phone', r.phone ? esc(r.phone) : '<i>not given</i>'],\n    ['Team size', esc(r.team_size)],\n    ['Mail client', esc(r.email_client)],\n    ['Role', esc(ROLE_LABEL[r.role] || r.role || 'not given')],\n    ['Market / locale', esc(r.market) + ' / ' + esc(r.locale)],\n    ['Came from', esc(r.source)],\n    ['UTM', esc([r.utm_source, r.utm_medium, r.utm_campaign, r.utm_content].filter(Boolean).join(' / ') || 'none')],\n    ['Submitted', esc(r.submitted_at)],\n    ['Ledger stage', esc(j.outcome)],\n    ['Lead id', esc(j.lead_id || '(not returned — see note below)')],\n  ];\n\n  let note = '';\n  if (j.outcome === 'gmail_on_request') {\n    note = '<p style=\"padding:10px;background:#fff6e5;border-left:3px solid #e0a030\">' +\n      'This firm is on ' + esc(r.email_client) + ', not Outlook. They still book. ' +\n      'Onboarding needs to set up the Gmail path for them, so say so on the call ' +\n      'rather than finding out during setup.</p>';\n  }\n  if (j.ledger_deduped) {\n    note += '<p style=\"color:#666;font-size:13px\">The ledger already had this exact ' +\n      'submission (same email, same timestamp), so no second row was created. ' +\n      'That is the retry path working, not a problem.</p>';\n  }\n  if (!j.ledger_stored) {\n    note += '<p style=\"padding:10px;background:#ffe9e9;border-left:3px solid #c33\">' +\n      'The ledger write did NOT succeed (' + esc(j.ledger_error) + '). ' +\n      'The lead is in the dead-letter file and in this email. Nothing is lost, ' +\n      'but the row is not in the database yet.</p>';\n  }\n\n  out.push({ json: Object.assign({}, j, {\n    lead_subject: subject,\n    lead_html:\n      '<p>New qualifier submission, ' + esc(size) + ', ' + esc(market) + '.</p>' +\n      note +\n      '<table cellpadding=\"6\" style=\"border-collapse:collapse;font-family:system-ui,sans-serif;font-size:14px\">' +\n      rows.map(([k, v]) =>\n        '<tr><td style=\"border-bottom:1px solid #eee;color:#666\">' + k +\n        '</td><td style=\"border-bottom:1px solid #eee\">' + v + '</td></tr>').join('') +\n      '</table>' +\n      '<p style=\"margin-top:18px;font-size:13px;color:#666\">Sent by WF-C1. ' +\n      'Nothing was sent to this person. The booking link was shown on the page.</p>',\n  }) });\n}\nreturn out;\n"
+      },
+      "id": "69e25876-3d6d-5f18-95c0-b2b2c199c592",
+      "name": "Email Dovy: new lead",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2000,
+        -440
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $json.cfg.from_email }}",
+        "toEmail": "={{ $json.cfg.dovy_email }}",
+        "subject": "={{ $json.lead_subject }}",
+        "emailFormat": "html",
+        "html": "={{ $json.lead_html }}",
+        "options": {}
+      },
+      "id": "5574d2da-b4b6-5e46-be51-6730487f327e",
+      "name": "Send: new lead",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        2220,
+        -440
+      ],
+      "credentials": {
+        "smtp": {
+          "name": "DoviLoop campaign SMTP"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "/* WF-C1 · Dead letter.\n\n   Reached on a malformed payload, or on a ledger write that did not succeed.\n   Writes the WHOLE raw body and the dedupe header, so the submission can be\n   replayed by hand or re-posted to this same webhook once the cause is fixed.\n\n   The file write and the email to Dovy are both attempted, on purpose. If the\n   file node is misconfigured on his instance the lead is still in his inbox;\n   if his mail is down it is still on disk. Losing a lead needs both to fail. */\n\nconst out = [];\nfor (const item of $input.all()) {\n  const j = item.json || {};\n  const record = {\n    dead_lettered_at: new Date().toISOString(),\n    kind: j.ok === false ? 'malformed_payload' : 'ledger_write_failed',\n    dedupe_key: j.dedupe_key || null,\n    dedupe_source: j.dedupe_source || null,\n    problems: j.problems || [],\n    fatal_problems: j.fatal_problems || [],\n    ledger_status: j.ledger_status == null ? null : j.ledger_status,\n    ledger_error: j.ledger_error || null,\n    raw_headers: j.raw_headers || {},\n    raw_body: j.raw_body === undefined ? null : j.raw_body,\n  };\n  out.push({ json: Object.assign({}, j, {\n    dead_letter: record,\n    line: JSON.stringify(record),\n    dl_subject: '[DEAD LETTER] qualifier ' + record.kind +\n      ' — ' + ((j.raw_body && j.raw_body.company_name) || 'unknown company'),\n    dl_html:\n      '<p>A qualifier submission did not make it into the ledger. It is not lost: ' +\n      'the full payload is below and in the dead-letter file.</p>' +\n      '<p><b>Reason:</b> ' + record.kind + '</p>' +\n      '<p><b>Problems:</b><br>' +\n      ((record.fatal_problems.length ? record.fatal_problems : record.problems)\n        .map(p => '&bull; ' + p).join('<br>') || 'none recorded') + '</p>' +\n      (record.ledger_error ? '<p><b>Ledger said:</b> ' + record.ledger_error + '</p>' : '') +\n      '<p><b>Raw payload</b></p><pre style=\"white-space:pre-wrap;font-size:12px\">' +\n      JSON.stringify(record.raw_body, null, 2)\n        .replace(/&/g, '&amp;').replace(/</g, '&lt;') +\n      '</pre>' +\n      '<p>To replay it once the cause is fixed, POST that body back to the ' +\n      'WF-C1 webhook with header <code>X-DoviLoop-Dedupe: ' +\n      (record.dedupe_key || '(none)') + '</code>. The dedupe key means a replay ' +\n      'cannot create a second lead.</p>',\n  }) });\n}\nreturn out;\n"
+      },
+      "id": "bb7b41a2-a258-5818-8cfa-487a87eb1e8e",
+      "name": "Dead letter: malformed",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "toText",
+        "sourceProperty": "line",
+        "options": {
+          "fileName": "dead-letter.jsonl",
+          "encoding": "utf8"
+        }
+      },
+      "id": "9a626a35-6c18-5ef3-9fe7-ae05a22e0144",
+      "name": "To file: malformed",
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        900,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "={{ $('Config').first().json.cfg.data_dir }}/dead-letter.jsonl",
+        "dataPropertyName": "data",
+        "options": {
+          "append": true
+        }
+      },
+      "id": "8b50a640-0fe3-58f0-a683-f256a0e623d5",
+      "name": "Append dead-letter.jsonl",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        260
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $('Config').first().json.cfg.from_email }}",
+        "toEmail": "={{ $('Config').first().json.cfg.dovy_email }}",
+        "subject": "={{ $('Dead letter: malformed').first().json.dl_subject }}",
+        "emailFormat": "html",
+        "html": "={{ $('Dead letter: malformed').first().json.dl_html }}",
+        "options": {}
+      },
+      "id": "244623eb-b393-5cf6-9914-5e1f1a267f8d",
+      "name": "Send: malformed submission",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1340,
+        260
+      ],
+      "credentials": {
+        "smtp": {
+          "name": "DoviLoop campaign SMTP"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseCode": 200,
+        "responseBody": "={{ JSON.stringify({ ok: false, error: 'payload did not match the qualifier contract', problems: $('Dead letter: malformed').first().json.dead_letter.fatal_problems, kept: true, note: 'Your answers were kept and a human was notified. Nothing was lost.' }) }}",
+        "options": {}
+      },
+      "id": "fb92ad9b-9ee4-5528-a102-cb3495c82a05",
+      "name": "Respond: accepted with errors",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1560,
+        260
+      ],
+      "notes": "200, not 4xx. Batch A's client retries on !res.ok and would re-post a payload that will fail identically, twice, then queue it forever."
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "/* WF-C1 · Dead letter.\n\n   Reached on a malformed payload, or on a ledger write that did not succeed.\n   Writes the WHOLE raw body and the dedupe header, so the submission can be\n   replayed by hand or re-posted to this same webhook once the cause is fixed.\n\n   The file write and the email to Dovy are both attempted, on purpose. If the\n   file node is misconfigured on his instance the lead is still in his inbox;\n   if his mail is down it is still on disk. Losing a lead needs both to fail. */\n\nconst out = [];\nfor (const item of $input.all()) {\n  const j = item.json || {};\n  const record = {\n    dead_lettered_at: new Date().toISOString(),\n    kind: j.ok === false ? 'malformed_payload' : 'ledger_write_failed',\n    dedupe_key: j.dedupe_key || null,\n    dedupe_source: j.dedupe_source || null,\n    problems: j.problems || [],\n    fatal_problems: j.fatal_problems || [],\n    ledger_status: j.ledger_status == null ? null : j.ledger_status,\n    ledger_error: j.ledger_error || null,\n    raw_headers: j.raw_headers || {},\n    raw_body: j.raw_body === undefined ? null : j.raw_body,\n  };\n  out.push({ json: Object.assign({}, j, {\n    dead_letter: record,\n    line: JSON.stringify(record),\n    dl_subject: '[DEAD LETTER] qualifier ' + record.kind +\n      ' — ' + ((j.raw_body && j.raw_body.company_name) || 'unknown company'),\n    dl_html:\n      '<p>A qualifier submission did not make it into the ledger. It is not lost: ' +\n      'the full payload is below and in the dead-letter file.</p>' +\n      '<p><b>Reason:</b> ' + record.kind + '</p>' +\n      '<p><b>Problems:</b><br>' +\n      ((record.fatal_problems.length ? record.fatal_problems : record.problems)\n        .map(p => '&bull; ' + p).join('<br>') || 'none recorded') + '</p>' +\n      (record.ledger_error ? '<p><b>Ledger said:</b> ' + record.ledger_error + '</p>' : '') +\n      '<p><b>Raw payload</b></p><pre style=\"white-space:pre-wrap;font-size:12px\">' +\n      JSON.stringify(record.raw_body, null, 2)\n        .replace(/&/g, '&amp;').replace(/</g, '&lt;') +\n      '</pre>' +\n      '<p>To replay it once the cause is fixed, POST that body back to the ' +\n      'WF-C1 webhook with header <code>X-DoviLoop-Dedupe: ' +\n      (record.dedupe_key || '(none)') + '</code>. The dedupe key means a replay ' +\n      'cannot create a second lead.</p>',\n  }) });\n}\nreturn out;\n"
+      },
+      "id": "2d9fcb00-4721-5440-aaa5-9b9fa7047002",
+      "name": "Dead letter: ledger write failed",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1780,
+        -60
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "toText",
+        "sourceProperty": "line",
+        "options": {
+          "fileName": "dead-letter.jsonl",
+          "encoding": "utf8"
+        }
+      },
+      "id": "f54011f1-d309-5ebe-8d62-632134c6ed79",
+      "name": "To file: ledger failure",
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        2000,
+        -60
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "={{ $('Config').first().json.cfg.data_dir }}/dead-letter.jsonl",
+        "dataPropertyName": "data",
+        "options": {
+          "append": true
+        }
+      },
+      "id": "3b581beb-71a2-5d64-a02f-c7a6d06557f4",
+      "name": "Append dead-letter.jsonl (ledger)",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        2220,
+        -60
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $('Config').first().json.cfg.from_email }}",
+        "toEmail": "={{ $('Config').first().json.cfg.dovy_email }}",
+        "subject": "={{ $('Dead letter: ledger write failed').first().json.dl_subject }}",
+        "emailFormat": "html",
+        "html": "={{ $('Dead letter: ledger write failed').first().json.dl_html }}",
+        "options": {}
+      },
+      "id": "33fb0d40-d3b7-5585-b6db-db7bb24c2802",
+      "name": "Send: ledger write failed",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        2440,
+        -60
+      ],
+      "credentials": {
+        "smtp": {
+          "name": "DoviLoop campaign SMTP"
+        }
+      },
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "Webhook — qualifier": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Validate and route",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate and route": {
+      "main": [
+        [
+          {
+            "node": "IF payload valid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF payload valid": {
+      "main": [
+        [
+          {
+            "node": "Guard: ledger target",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Dead letter: malformed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guard: ledger target": {
+      "main": [
+        [
+          {
+            "node": "Ledger: upsert lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ledger: upsert lead": {
+      "main": [
+        [
+          {
+            "node": "Read ledger result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read ledger result": {
+      "main": [
+        [
+          {
+            "node": "Respond: routing outcome",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond: routing outcome": {
+      "main": [
+        [
+          {
+            "node": "IF ledger stored",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF ledger stored": {
+      "main": [
+        [
+          {
+            "node": "IF too small",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Dead letter: ledger write failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF too small": {
+      "main": [
+        [
+          {
+            "node": "Park: no nurture without opt-in",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Email Dovy: new lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Park: no nurture without opt-in": {
+      "main": [
+        [
+          {
+            "node": "To file: parked lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "To file: parked lead": {
+      "main": [
+        [
+          {
+            "node": "Append parked-under-10.jsonl",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email Dovy: new lead": {
+      "main": [
+        [
+          {
+            "node": "Send: new lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dead letter: malformed": {
+      "main": [
+        [
+          {
+            "node": "To file: malformed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "To file: malformed": {
+      "main": [
+        [
+          {
+            "node": "Append dead-letter.jsonl",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append dead-letter.jsonl": {
+      "main": [
+        [
+          {
+            "node": "Send: malformed submission",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send: malformed submission": {
+      "main": [
+        [
+          {
+            "node": "Respond: accepted with errors",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dead letter: ledger write failed": {
+      "main": [
+        [
+          {
+            "node": "To file: ledger failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "To file: ledger failure": {
+      "main": [
+        [
+          {
+            "node": "Append dead-letter.jsonl (ledger)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append dead-letter.jsonl (ledger)": {
+      "main": [
+        [
+          {
+            "node": "Send: ledger write failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Copenhagen",
+    "saveManualExecutions": true,
+    "saveExecutionProgress": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all"
+  },
+  "pinData": {},
+  "tags": [],
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "versionId": "a8360e9b-6297-5e60-b029-5acba37beabf"
+}

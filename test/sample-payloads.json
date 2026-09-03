@@ -1,0 +1,248 @@
+{
+  "_readme": [
+    "Sample payloads for testing each webhook by hand. Every qualifier payload here",
+    "matches the shared contract in campaign-specs/00-START-HERE.md and Batch A's",
+    "campaign-site/src/lib/contract.ts, and is accepted or rejected by the same",
+    "validator Batch A wrote for its own mock endpoint.",
+    "",
+    "curl examples are in README.md under 'Test plan'. The header",
+    "X-DoviLoop-Dedupe carries the per-submission idempotency key Batch A sends",
+    "from src/lib/lead.ts; send it to exercise the primary dedupe path, omit it to",
+    "exercise the fallback derived from work_email + submitted_at."
+  ],
+
+  "wf_c1_qualifier": {
+    "qualified_outlook_global": {
+      "_expect": "stage qualified, booking link, email to Dovy",
+      "_headers": { "X-DoviLoop-Dedupe": "b1f2c3d4-0001-4a11-9c22-000000000001" },
+      "body": {
+        "source": "ad", "market": "global", "locale": "en",
+        "utm": { "source": "meta", "medium": "paid_social", "campaign": "teams_q4", "content": "s05-two-weeks-4x5" },
+        "company_name": "Harbourline Accounting LLP",
+        "work_email": "ruth.pell@harbourline-acc.co.uk",
+        "phone": "+44 20 7946 0812",
+        "team_size": "25-49", "email_client": "outlook", "role": "owner_partner",
+        "submitted_at": "2026-09-15T09:41:22.318Z"
+      }
+    },
+    "gmail_on_request_lt": {
+      "_expect": "stage gmail_on_request (a STAGE, not a flag: Batch B's schema), booking link, email to Dovy with the Gmail note",
+      "_headers": { "X-DoviLoop-Dedupe": "b1f2c3d4-0002-4a11-9c22-000000000002" },
+      "body": {
+        "source": "outreach", "market": "lt", "locale": "lt",
+        "utm": { "source": "linkedin", "medium": "dm", "campaign": "teams_q4", "content": "lt-seq1-step2" },
+        "company_name": "Vilniaus Draudimo Brokeriai UAB",
+        "work_email": "g.jankauskas@vdbrokeriai.lt",
+        "phone": "+370 5 212 4488",
+        "team_size": "10-24", "email_client": "gmail", "role": "ops_office_manager",
+        "submitted_at": "2026-09-16T13:02:55.001Z"
+      }
+    },
+    "too_small_dk": {
+      "_expect": "stage too_small, PARKED. No nurture starts. Denmark makes this the strictest case in the set.",
+      "_headers": { "X-DoviLoop-Dedupe": "b1f2c3d4-0003-4a11-9c22-000000000003" },
+      "body": {
+        "source": "reel", "market": "dk", "locale": "da",
+        "utm": { "source": "linkedin", "medium": "organic", "campaign": "teams_q4", "content": "reel:on_camera:da:drafts-in-outlook" },
+        "company_name": "Nørrebro Ejendomsadministration",
+        "work_email": "mette@norrebro-ejd.dk",
+        "phone": "+45 33 12 44 90",
+        "team_size": "1-9", "email_client": "outlook", "role": "owner_partner",
+        "submitted_at": "2026-09-17T07:55:10.442Z"
+      }
+    },
+    "duplicate_of_qualified": {
+      "_expect": "SAME dedupe header and same body as qualified_outlook_global. Must not create a second lead.",
+      "_headers": { "X-DoviLoop-Dedupe": "b1f2c3d4-0001-4a11-9c22-000000000001" },
+      "body": {
+        "source": "ad", "market": "global", "locale": "en",
+        "utm": { "source": "meta", "medium": "paid_social", "campaign": "teams_q4", "content": "s05-two-weeks-4x5" },
+        "company_name": "Harbourline Accounting LLP",
+        "work_email": "ruth.pell@harbourline-acc.co.uk",
+        "phone": "+44 20 7946 0812",
+        "team_size": "25-49", "email_client": "outlook", "role": "owner_partner",
+        "submitted_at": "2026-09-15T09:41:22.318Z"
+      }
+    },
+    "no_dedupe_header": {
+      "_expect": "no X-DoviLoop-Dedupe. Falls back to Batch B's derived key, lower(work_email)|submitted_at.",
+      "_headers": {},
+      "body": {
+        "source": "direct", "market": "global", "locale": "en",
+        "utm": { "source": "", "medium": "", "campaign": "", "content": "" },
+        "company_name": "Sixth Street Insurance Brokers",
+        "work_email": "ops@sixthstreetbrokers.com",
+        "phone": "",
+        "team_size": "50+", "email_client": "other", "role": "it_admin",
+        "submitted_at": "2026-09-18T16:20:00.000Z"
+      }
+    },
+    "malformed_missing_keys": {
+      "_expect": "200 with an error body. Dead-lettered and emailed to Dovy. NOT lost.",
+      "_headers": { "X-DoviLoop-Dedupe": "b1f2c3d4-0004-4a11-9c22-000000000004" },
+      "body": {
+        "company_name": "Halfway Filled Form Ltd",
+        "work_email": "someone@halfway.example",
+        "submitted_at": "2026-09-19T10:00:00.000Z"
+      }
+    },
+    "malformed_bad_enum": {
+      "_expect": "200 with an error body naming team_size. Dead-lettered.",
+      "_headers": { "X-DoviLoop-Dedupe": "b1f2c3d4-0005-4a11-9c22-000000000005" },
+      "body": {
+        "source": "ad", "market": "global", "locale": "en",
+        "utm": { "source": "meta", "medium": "paid_social", "campaign": "teams_q4", "content": "s01" },
+        "company_name": "Wrong Enum Partners",
+        "work_email": "hi@wrongenum.example",
+        "phone": "",
+        "team_size": "5-9", "email_client": "outlook", "role": "owner_partner",
+        "submitted_at": "2026-09-19T11:00:00.000Z"
+      }
+    },
+    "malformed_not_an_object": {
+      "_expect": "200 with an error body. The raw value is preserved in the dead letter.",
+      "_headers": {},
+      "body": "this is not a json object at all"
+    },
+    "tolerated_extra_key": {
+      "_expect": "ACCEPTED. An unknown key is recorded as a non-fatal problem and stripped before the insert. A real lead is not bounced over an extra field.",
+      "_headers": { "X-DoviLoop-Dedupe": "b1f2c3d4-0006-4a11-9c22-000000000006" },
+      "body": {
+        "source": "reel", "market": "global", "locale": "en",
+        "utm": { "source": "instagram", "medium": "organic", "campaign": "teams_q4", "content": "reel:higgsfield:en:six-hours" },
+        "company_name": "Extra Field Facilities Management",
+        "work_email": "admin@extrafield.example",
+        "phone": "+1 415 555 0139",
+        "team_size": "10-24", "email_client": "outlook", "role": "other",
+        "submitted_at": "2026-09-20T08:30:00.000Z",
+        "referrer_hint": "added by a future version of the form"
+      }
+    }
+  },
+
+  "wf_c2_nurture": {
+    "_note": "WF-C2 is started by hand (Execute Workflow trigger) or by POST to campaign/nurture-optin. It sends NOTHING without every field of `optin`.",
+    "no_optin_should_park": {
+      "_expect": "PARKED. Nothing sent. This is what WF-C1 would hand it if it auto-enrolled, which is exactly why WF-C1 does not.",
+      "body": {
+        "lead": {
+          "company_name": "Nørrebro Ejendomsadministration",
+          "work_email": "mette@norrebro-ejd.dk",
+          "market": "dk", "locale": "da", "team_size": "1-9"
+        }
+      }
+    },
+    "dk_optin_without_law_confirmation_should_park": {
+      "_expect": "PARKED even with a real opt-in, because market is dk and the marketing-law position is not confirmed.",
+      "body": {
+        "lead": {
+          "company_name": "Nørrebro Ejendomsadministration",
+          "work_email": "mette@norrebro-ejd.dk",
+          "market": "dk", "locale": "da", "team_size": "1-9"
+        },
+        "optin": {
+          "granted": true,
+          "source": "replied to hello@doviloop.dev asking for the three notes",
+          "evidence": "Gmail thread 18f2c9a04b7e1d33",
+          "recorded_at": "2026-09-18T09:12:00.000Z",
+          "work_email": "mette@norrebro-ejd.dk"
+        }
+      }
+    },
+    "global_optin_should_send": {
+      "_expect": "CONSENTED. Three emails go out over two weeks, each with a working unsubscribe link.",
+      "body": {
+        "lead": {
+          "company_name": "Two Desk Bookkeeping",
+          "work_email": "jo@twodeskbooks.example",
+          "market": "global", "locale": "en", "team_size": "1-9"
+        },
+        "optin": {
+          "granted": true,
+          "source": "pressed 'Send me the three emails' on teams.doviloop.dev and replied to the mailto",
+          "evidence": "Gmail thread 18f31a7c55d9002b, screenshot in Drive/DoviLoop Ops/optins/",
+          "recorded_at": "2026-09-20T09:00:00.000Z",
+          "work_email": "jo@twodeskbooks.example"
+        }
+      }
+    }
+  },
+
+  "wf_c3_content_approval": {
+    "_note": "POST to campaign/content-approve. This is the ONLY thing that makes a reel publishable.",
+    "approve_one": { "body": { "natural_key": "reel:on_camera:en:the-mail-you-answer-twenty-times", "approved_by": "dovy" } },
+    "approve_several": { "body": { "natural_keys": ["reel:higgsfield:en:six-hours-of-repeat-mail", "reel:on_camera:da:drafts-in-outlook"], "approved_by": "dovy" } },
+    "revoke": { "body": { "natural_key": "reel:on_camera:da:drafts-in-outlook", "revoke": true, "approved_by": "dovy" } }
+  },
+
+  "wf_c4_meta_comment": {
+    "_note": "Shape of a Meta comments webhook delivery. Sending this drafts a DM and emails Dovy to approve. It does NOT send a DM.",
+    "instagram_keyword_hit": {
+      "body": {
+        "object": "instagram",
+        "entry": [{
+          "id": "17841400000000000",
+          "time": 1789200000,
+          "changes": [{
+            "field": "comments",
+            "value": {
+              "id": "17900000000000001",
+              "text": "how do the drafts work in outlook?",
+              "media": { "id": "17900000000000099", "media_product_type": "REELS" },
+              "from": { "id": "7000000000000001", "username": "office_manager_j" }
+            }
+          }]
+        }]
+      }
+    },
+    "instagram_no_keyword": {
+      "body": {
+        "object": "instagram",
+        "entry": [{
+          "id": "17841400000000000",
+          "changes": [{
+            "field": "comments",
+            "value": {
+              "id": "17900000000000002",
+              "text": "great video",
+              "media": { "id": "17900000000000099" },
+              "from": { "id": "7000000000000002", "username": "someone_else" }
+            }
+          }]
+        }]
+      }
+    }
+  },
+
+  "wf_c5_stripe": {
+    "_note": "WF-C5 takes ONLY the event id from this body and re-fetches the event from Stripe. Everything else here is ignored, which is what makes an unsigned webhook safe.",
+    "checkout_completed": {
+      "body": {
+        "id": "evt_1QxTESTonly000000000000",
+        "object": "event",
+        "type": "checkout.session.completed",
+        "data": { "object": {
+          "id": "cs_test_a1EXAMPLEONLY",
+          "object": "checkout.session",
+          "payment_status": "paid",
+          "status": "complete",
+          "customer": "cus_TESTonly0001",
+          "client_reference_id": "00000000-0000-0000-0000-00000000pilot",
+          "metadata": { "pilot_id": "00000000-0000-0000-0000-00000000pilot", "seats": "14", "created_by": "WF-C5" }
+        } }
+      }
+    },
+    "not_a_payment": {
+      "body": { "id": "evt_1QxTESTonly000000000001", "type": "customer.created", "data": { "object": {} } }
+    },
+    "forged_no_event_id": {
+      "_expect": "Ignored. The id does not match ^evt_ so nothing is fetched and nothing is written.",
+      "body": { "id": "not-an-event-id", "type": "invoice.paid", "data": { "object": { "metadata": { "pilot_id": "whatever" } } } }
+    }
+  },
+
+  "wf_c2_unsubscribe": {
+    "_note": "GET campaign/unsubscribe?e=<email>&t=<token>. One click, no confirm step.",
+    "query": { "e": "jo@twodeskbooks.example", "t": "dW5zdWI6am9AdHdvZGVza2Jvb2tzLmV4YW1wbGU" }
+  }
+}

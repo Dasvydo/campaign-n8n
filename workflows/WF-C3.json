@@ -1,0 +1,1394 @@
+{
+  "name": "WF-C3 — Publish approved reels (Buffer, with a real fallback)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * 4"
+            }
+          ]
+        }
+      },
+      "id": "1f55bc8a-b4d8-5ab1-95fd-7b93e0152e72",
+      "name": "Schedule: Thursday 08:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -240,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cfg",
+              "name": "cfg",
+              "value": "={{ {\n  ledger_url: '',\n  dovy_email: 'hello@doviloop.dev',\n  from_email: 'campaign-bot@doviloop.dev',\n  data_dir: '/home/node/.n8n/campaign',\n  publisher: 'buffer',\n  buffer_api_url: 'https://graph.buffer.com/',\n  buffer_channels: { instagram: '', facebook: '', youtube_shorts: '', linkedin: '' },\n  meta_graph_version: 'v21.0',\n  ig_user_id: '',\n  fb_page_id: '',\n  asset_base_url: ''\n} }}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "297796be-c67f-514e-a2db-df4bb1a284a9",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -20,
+        0
+      ],
+      "notes": "publisher: 'buffer' or 'direct'. Switch to 'direct' if Buffer's plan does not expose the API. Both paths are built."
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Refuses to run against the product database, and refuses to run unconfigured.\n//\n// This mirrors the same refusal Batch B built into campaign_db.py\n// (_FORBIDDEN_PROJECT_REF). Two independent layers now have to be defeated\n// before a campaign workflow can touch the product project by accident.\nconst FORBIDDEN = 'kngcxwcybozgqgnoweyt';\n\nconst out = [];\nfor (const item of $input.all()) {\n  const cfg = (item.json && item.json.cfg) || {};\n  const url = String(cfg.ledger_url || '').trim();\n\n  if (!url) {\n    throw new Error(\n      'Config.ledger_url is blank. Open the Config node and paste the CAMPAIGN ' +\n      'ledger project URL (the lead-pipeline project, schema \"campaign\"). It ships ' +\n      'blank on purpose so an unreviewed import cannot reach any database.');\n  }\n  if (url.includes(FORBIDDEN)) {\n    throw new Error(\n      'Config.ledger_url points at the PRODUCT database (' + FORBIDDEN + '). ' +\n      'The campaign ledger is a different project. Refusing to run.');\n  }\n  if (!/^https:\\/\\//.test(url)) {\n    throw new Error('Config.ledger_url must be https, got: ' + url);\n  }\n  out.push(item);\n}\nreturn out;\n"
+      },
+      "id": "49e614a2-df97-5ec1-9fff-f6925039fc2e",
+      "name": "Guard: ledger target",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        200,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.cfg.ledger_url }}/rest/v1/content?published_at=is.null&select=*&order=created_at.asc",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "fullResponse": true
+            }
+          },
+          "timeout": 20000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept-Profile",
+              "value": "campaign"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        }
+      },
+      "id": "47a19025-878a-5f4b-9c8a-b56285b72417",
+      "name": "Ledger: read unpublished content",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        420,
+        0
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "name": "Campaign Ledger (Supabase, campaign schema)"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "/* ------------------------------------------------------------------------\n   WF-C3 · Approval gate and channel map.  FAILS CLOSED.\n   ------------------------------------------------------------------------\n   This is the only workflow in the campaign that publishes in public, so the\n   gate here is the one that matters most.\n\n   THE DIVERGENCE, stated plainly. The spec says: read campaign.content \"where\n   published_at is null AND an approval flag is set\". There is no approval flag.\n   Batch B's campaign.content is exactly:\n\n     id, kind, lane, language, hook, script_path, asset_path, platforms,\n     published_at, buffer_id, natural_key, created_at\n\n   No approved column, no status column, nothing. Batch D confirms the same\n   list in reel-engine/engine/ledger.py (CONTENT_COLUMNS) and asserts it in its\n   own tests. Batch D's approval lives in a completely different place: a\n   GitHub-issue queue on disk (reel-engine/engine/approval.py, queue/proposed,\n   queue/rendered, queue/rejected), which n8n cannot see.\n\n   So \"an approval flag is set\" cannot be read from the ledger. Two ways to\n   resolve that, and only one of them is safe:\n\n     WRONG: treat \"published_at is null and asset_path is set\" as approval.\n            That publishes every rendered reel automatically. A render is not\n            an approval, and the spec's own sentence is \"it only ever moves\n            content Dovy has marked approved\".\n\n     RIGHT: keep a separate, explicit approval list that only Dovy writes, and\n            publish nothing that is not on it. That is what this does.\n\n   The list lives in this workflow's static data and is written by the\n   \"Webhook - approve content\" branch of this same workflow. Approving is one\n   POST per item, or one click from the email WF-C3 sends when it finds\n   unapproved content waiting.\n\n   The proper fix is one column. sql/004_consent.sql in this repo also proposes\n   `campaign.content.approved_at timestamptz` so this list can move into the\n   ledger where the rest of the campaign can see it. Until then: fails closed,\n   which for a public post is the only acceptable direction.\n   ------------------------------------------------------------------------ */\n\nconst CHANNELS_BY_LANGUAGE = {\n  // English is the master and goes everywhere.\n  en: ['instagram', 'facebook', 'youtube_shorts', 'linkedin'],\n  // Danish and Lithuanian are LinkedIn only, per the spec's table.\n  da: ['linkedin'],\n  lt: ['linkedin'],\n};\n\n// Ported from reel-engine/engine/publish.py check_asset_url(). Buffer fetches\n// the video when it publishes, which may be hours later, so a signed or\n// expiring URL silently becomes a dead one.\nconst SIGNING_MARKERS = ['X-Amz-', 'Signature=', 'Expires=', 'token=', 'Key-Pair-Id='];\n\nfunction assetProblem(url) {\n  const u = String(url || '');\n  if (!u) return 'no asset URL';\n  if (!/^https:\\/\\//i.test(u)) return 'asset URL must be https';\n  const withoutQuery = u.split('?')[0];\n  if (!/\\.mp4$/i.test(withoutQuery)) return 'asset URL must point directly at an .mp4';\n  if (u.includes('?')) {\n    const marker = SIGNING_MARKERS.find(m => u.includes(m));\n    return 'asset URL carries a query string' + (marker ? ' (' + marker + ')' : '') +\n      ': a signed or expiring URL will be dead by the time it is fetched';\n  }\n  return null;\n}\n\nconst cfg = $('Config').first().json.cfg || {};\nconst store = $getWorkflowStaticData('global');\nstore.approved = store.approved || {};    // natural_key -> ISO approved_at\n\nconst rows = [];\nfor (const item of $input.all()) {\n  const body = item.json && item.json.body;\n  if (Array.isArray(body)) rows.push(...body);\n  else if (Array.isArray(item.json)) rows.push(...item.json);\n  else if (body) rows.push(body);\n  else if (item.json && item.json.id) rows.push(item.json);\n}\n\nconst ready = [];\nconst held = [];\n\nfor (const row of rows) {\n  if (row.published_at) continue;                  // already out\n  const key = row.natural_key || row.id;\n  const approvedAt = store.approved[key];\n\n  const channels = CHANNELS_BY_LANGUAGE[row.language] || [];\n  const assetUrl = row.asset_path && /^https?:/i.test(row.asset_path)\n    ? row.asset_path\n    : (cfg.asset_base_url ? String(cfg.asset_base_url).replace(/\\/+$/, '') + '/' +\n        String(row.asset_path || '').replace(/^\\/+/, '') : row.asset_path);\n\n  const reasons = [];\n  if (!approvedAt) reasons.push('not on the approval list');\n  if (!channels.length) reasons.push('language \"' + row.language + '\" maps to no channel');\n  const ap = assetProblem(assetUrl);\n  if (ap) reasons.push(ap);\n  if (!String(row.hook || '').trim()) reasons.push('no hook text to post with');\n\n  const rec = {\n    content_id: row.id,\n    natural_key: key,\n    kind: row.kind, lane: row.lane, language: row.language,\n    hook: row.hook, asset_url: assetUrl,\n    channels: channels,\n    approved_at: approvedAt || null,\n    hold_reasons: reasons,\n  };\n  if (reasons.length) held.push(rec); else ready.push(rec);\n}\n\n// One item per (content, channel). Everything downstream is per-post.\nconst out = [];\nfor (const r of ready) {\n  for (const channel of r.channels) {\n    out.push({ json: Object.assign({}, r, { cfg: cfg, channel: channel }) });\n  }\n}\n\n// Always emit one summary item so the \"nothing to do\" branch has something to\n// report and Dovy learns that content is waiting for his approval.\nout.push({ json: {\n  cfg: cfg,\n  __summary: true,\n  ready_count: ready.length,\n  post_count: out.length,\n  held: held,\n  ready: ready.map(r => ({ natural_key: r.natural_key, language: r.language, channels: r.channels })),\n} });\n\nreturn out;\n"
+      },
+      "id": "05a63024-25b7-5f22-a83e-d29231aa8612",
+      "name": "Approval gate + channel map",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "836813a2-a630-5694-a95a-9a7a292bda8e",
+              "leftValue": "={{ $json.__summary !== true && !!$json.channel }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "05a65b1d-01e9-5c92-846f-f8fdd949e13b",
+      "name": "IF a real post to make",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        860,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "0974bf8d-0105-5ff6-a9d6-20ffedd323fb",
+              "leftValue": "={{ $json.cfg.publisher === 'buffer' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "9b44e243-e47e-59de-a67f-ae08c2beacda",
+      "name": "IF publisher is Buffer",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1080,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.cfg.buffer_api_url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ query: 'mutation CreatePost($channelId: ID!, $text: String!, $assets: [AssetInput!]) { createPost(input: {channelId: $channelId, text: $text, assets: $assets}) { __typename ... on PostCreated { post { id publishingType } } ... on Error { message } } }', variables: { channelId: $json.cfg.buffer_channels[$json.channel], text: $json.hook, assets: [{ video: { url: $json.asset_url } }] } }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "b2ddb291-ad46-5c5c-90c0-6512abbf1c7f",
+      "name": "Buffer: createPost",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1300,
+        -300
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Buffer API token"
+        }
+      },
+      "alwaysOutputData": true,
+      "notes": "ONE createPost per channel, per reel-engine/engine/publish.py. Three calls, three independent failure modes."
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "/* WF-C3 · Interpret a Buffer response.\n\n   This node exists because of the single most important fact Batch D found\n   about Buffer, in reel-engine/engine/publish.py:\n\n     \"Errors come back as HTTP 200 with a typed error body. A publisher that\n      checks only the status code reports success on every failure.\"\n\n   So the status code proves nothing. A post counts as created ONLY if the\n   response carries a post id. The typenames below are an incomplete denylist\n   copied from D's ERROR_TYPENAMES, and they are the second check, not the\n   first: an unlisted error typename still fails, because it arrives with no id.\n\n   Instagram gets a third check. It is the one platform that can report a post\n   while having only sent a phone notification for someone to finish by hand,\n   so it is judged on positive confirmation of auto-publishing and nothing less.\n   AUTOPUBLISH_VALUES is matched by exact, case-folded equality: widening it is\n   how a false success gets through, and a false success is the failure mode\n   this whole node exists to prevent. NOTIFICATION_MARKERS stays a substring\n   match because being loose there only ever fails closed. */\n\nconst ERROR_TYPENAMES = new Set(['Error', 'InvalidInputError', 'NotFoundError',\n  'PostCreateError', 'RateLimitError', 'UnauthorizedError']);\nconst PUBLISH_TYPE_FIELDS = ['publishingType', 'publishing_type', 'postingType', 'type'];\nconst NOTIFICATION_MARKERS = ['notification', 'reminder', 'push', 'manual'];\nconst AUTOPUBLISH_VALUES = ['auto', 'automatic', 'auto_publish', 'direct'];\n\nfunction node(payload) {\n  const d = payload && payload.data;\n  return (d && d.createPost) || null;\n}\n\nconst out = [];\nfor (const item of $input.all()) {\n  const j = item.json || {};\n  const res = j.body !== undefined ? j.body : j;\n  const meta = $('Fan out per channel').first ? null : null;   // context comes on the item\n  const n = node(res);\n\n  let ok = false;\n  let postId = null;\n  let error = null;\n\n  if (res && res.errors && res.errors.length) {\n    error = 'GraphQL errors: ' + JSON.stringify(res.errors).slice(0, 300);\n  } else if (!n) {\n    error = 'no createPost in the response: ' + JSON.stringify(res).slice(0, 300);\n  } else if (ERROR_TYPENAMES.has(n.__typename)) {\n    error = n.__typename + ': ' + (n.message || 'no message');\n  } else if (!(n.post && n.post.id)) {\n    // Unlisted error typename. No id means no post, whatever it calls itself.\n    error = 'response carried no post id (__typename=' + n.__typename + ')';\n  } else {\n    postId = n.post.id;\n    ok = true;\n    if (j.channel === 'instagram') {\n      let publishType = null;\n      for (const f of PUBLISH_TYPE_FIELDS) {\n        if (n.post[f] != null) { publishType = String(n.post[f]).toLowerCase(); break; }\n      }\n      if (publishType == null) {\n        ok = false;\n        error = 'Instagram: the response did not say how it will publish, so ' +\n          'auto-publish is unconfirmed. Treating as not published.';\n      } else if (NOTIFICATION_MARKERS.some(m => publishType.includes(m))) {\n        ok = false;\n        error = 'Instagram will only send a phone notification (' + publishType +\n          '), not auto-publish. Requires a Professional account with ' +\n          '\"Enable Notifications by default\" switched off.';\n      } else if (!AUTOPUBLISH_VALUES.includes(publishType)) {\n        ok = false;\n        error = 'Instagram publishingType \"' + publishType + '\" is not a confirmed ' +\n          'auto-publish value. Failing closed.';\n      }\n    }\n  }\n\n  out.push({ json: Object.assign({}, j, {\n    publisher: 'buffer',\n    post_ok: ok,\n    post_id: postId,\n    post_error: error,\n    raw: res,\n  }) });\n}\nreturn out;\n"
+      },
+      "id": "7bdd975d-fbed-5991-820c-cba1943e2b7c",
+      "name": "Interpret Buffer response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1520,
+        -300
+      ],
+      "notes": "Buffer returns errors as HTTP 200 with a typed error body. The status code proves nothing; only a post id does."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ba8b9f4c-6d23-5553-84ac-8de53c4e1ab7",
+              "leftValue": "={{ ['instagram','facebook'].includes($json.channel) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "6b39877d-e3ff-5433-a014-6c1b8aa57fa0",
+      "name": "IF platform is Meta",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1300,
+        -20
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "18aefc2c-f790-596d-958e-12cb443720a2",
+              "leftValue": "={{ $json.channel === 'instagram' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "fcabdf72-9509-5592-9ff7-106c1d1a3feb",
+      "name": "IF platform is Instagram",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1520,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/{{ $json.cfg.meta_graph_version }}/{{ $json.cfg.ig_user_id }}/media",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "media_type",
+              "value": "REELS"
+            },
+            {
+              "name": "video_url",
+              "value": "={{ $json.asset_url }}"
+            },
+            {
+              "name": "caption",
+              "value": "={{ $json.hook }}"
+            },
+            {
+              "name": "share_to_feed",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "id": "e4988063-d179-569e-97cf-12ccc975473a",
+      "name": "IG: create reel container",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1740,
+        -180
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Meta Graph API page token"
+        }
+      },
+      "alwaysOutputData": true,
+      "notes": "Step 1 of 3. Instagram video publishing is asynchronous: create a container, wait for it to finish transcoding, then publish it."
+    },
+    {
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": 90,
+        "unit": "seconds"
+      },
+      "id": "b3acee5d-bc1a-531d-9485-9968aa62d141",
+      "name": "Wait for IG transcode",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1960,
+        -180
+      ],
+      "webhookId": "a48e784c-aaab-5c8e-a18c-1d91119c5f5d"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/{{ $('Approval gate + channel map').item.json.cfg.meta_graph_version }}/{{ $('Approval gate + channel map').item.json.cfg.ig_user_id }}/media_publish",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "creation_id",
+              "value": "={{ $('IG: create reel container').item.json.id }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "id": "bb26cc92-9fdb-5e36-959a-28b45c844e5a",
+      "name": "IG: publish container",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2180,
+        -180
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Meta Graph API page token"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const out = [];\nfor (const item of $input.all()) {\n  const res = item.json || {};\n  const ctx = $('Approval gate + channel map').item.json;\n  const id = res.id || null;\n  out.push({ json: Object.assign({}, ctx, {\n    publisher: 'meta_graph',\n    post_ok: !!id && !res.error,\n    post_id: id,\n    post_error: id && !res.error ? null :\n      ('Instagram: ' + JSON.stringify(res.error || res).slice(0, 300)),\n  }) });\n}\nreturn out;\n"
+      },
+      "id": "f34eb12a-3078-52fc-82ee-5c9f45ac5356",
+      "name": "Normalise: Instagram",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2400,
+        -180
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/{{ $json.cfg.meta_graph_version }}/{{ $json.cfg.fb_page_id }}/videos",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "file_url",
+              "value": "={{ $json.asset_url }}"
+            },
+            {
+              "name": "description",
+              "value": "={{ $json.hook }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          },
+          "timeout": 120000
+        }
+      },
+      "id": "790a71a0-657b-5c0a-bec5-9f7b31203186",
+      "name": "FB page: post video",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1740,
+        -20
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Meta Graph API page token"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const out = [];\nfor (const item of $input.all()) {\n  const res = item.json || {};\n  const ctx = $('Approval gate + channel map').item.json;\n  const id = res.id || null;\n  out.push({ json: Object.assign({}, ctx, {\n    publisher: 'meta_graph',\n    post_ok: !!id && !res.error,\n    post_id: id,\n    post_error: id && !res.error ? null :\n      ('Facebook: ' + JSON.stringify(res.error || res).slice(0, 300)),\n  }) });\n}\nreturn out;\n"
+      },
+      "id": "0f292bef-51a1-511c-a68b-98fa54ac6e24",
+      "name": "Normalise: Facebook",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1960,
+        -20
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ed4b00a9-0652-5de0-bbcb-01be0c920150",
+              "leftValue": "={{ $json.channel === 'youtube_shorts' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "1e684c3b-aab4-5c42-aa43-a29d8ae2189d",
+      "name": "IF platform is YouTube",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1520,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.asset_url }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "data"
+            }
+          },
+          "timeout": 300000
+        }
+      },
+      "id": "099abc68-693e-55b2-802b-46f06d8c29ec",
+      "name": "Download asset (YouTube)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1740,
+        140
+      ],
+      "alwaysOutputData": true,
+      "notes": "The YouTube node uploads bytes, unlike Buffer and Meta which fetch a URL."
+    },
+    {
+      "parameters": {
+        "resource": "video",
+        "operation": "upload",
+        "title": "={{ $('Approval gate + channel map').item.json.hook.slice(0, 95) }}",
+        "regionCode": "US",
+        "categoryId": "22",
+        "options": {
+          "description": "={{ $('Approval gate + channel map').item.json.hook }}",
+          "privacyStatus": "public",
+          "selfDeclaredMadeForKids": false
+        }
+      },
+      "id": "8fe3fe50-98c1-51a0-9fc6-ce634f1fabe6",
+      "name": "YouTube: upload short",
+      "type": "n8n-nodes-base.youTube",
+      "typeVersion": 1,
+      "position": [
+        1960,
+        140
+      ],
+      "credentials": {
+        "youTubeOAuth2Api": {
+          "name": "YouTube Data API (campaign)"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const out = [];\nfor (const item of $input.all()) {\n  const res = item.json || {};\n  const ctx = $('Approval gate + channel map').item.json;\n  const id = res.id || (res.snippet && res.snippet.resourceId && res.snippet.resourceId.videoId) || null;\n  out.push({ json: Object.assign({}, ctx, {\n    publisher: 'youtube_data_api',\n    post_ok: !!id,\n    post_id: id,\n    post_error: id ? null : ('YouTube: ' + JSON.stringify(res).slice(0, 300)),\n  }) });\n}\nreturn out;\n"
+      },
+      "id": "484642ce-4f92-5468-a992-764230ad22b0",
+      "name": "Normalise: YouTube",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2180,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "e2b4d4ef-8d0c-50c3-8f7d-ceb00c191628",
+              "leftValue": "={{ $json.channel === 'linkedin' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "bd6fce6a-f77e-5038-9461-5068462b48b7",
+      "name": "IF platform is LinkedIn",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1740,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.asset_url }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "data"
+            }
+          },
+          "timeout": 300000
+        }
+      },
+      "id": "3c13d5d2-36d3-5294-a1db-24be2a0b2e73",
+      "name": "Download asset (LinkedIn)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1960,
+        320
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "postAs": "person",
+        "text": "={{ $('Approval gate + channel map').item.json.hook }}",
+        "shareMediaCategory": "IMAGE",
+        "additionalFields": {},
+        "binaryPropertyName": "data"
+      },
+      "id": "db3a1258-d8a5-5ae8-9ccb-73c8902279e3",
+      "name": "LinkedIn: post video",
+      "type": "n8n-nodes-base.linkedIn",
+      "typeVersion": 1,
+      "position": [
+        2180,
+        320
+      ],
+      "credentials": {
+        "linkedInOAuth2Api": {
+          "name": "LinkedIn (campaign posting)"
+        }
+      },
+      "alwaysOutputData": true,
+      "notes": "n8n's LinkedIn node has no native video category. See README: on the direct path, LinkedIn video needs the three-call UGC upload and is logged as blocked. Text plus a still frame works today."
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const out = [];\nfor (const item of $input.all()) {\n  const res = item.json || {};\n  const ctx = $('Approval gate + channel map').item.json;\n  const id = res.id || res.urn || null;\n  out.push({ json: Object.assign({}, ctx, {\n    publisher: 'linkedin_api',\n    post_ok: !!id,\n    post_id: id,\n    post_error: id ? null : ('LinkedIn: ' + JSON.stringify(res).slice(0, 300)),\n  }) });\n}\nreturn out;\n"
+      },
+      "id": "354d9c82-d767-50cc-86df-dda2bc41f820",
+      "name": "Normalise: LinkedIn",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2400,
+        320
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "856c5cc4-5702-541b-a9bd-1261ac3bdc06",
+      "name": "Unsupported channel",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1960,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "append",
+        "numberInputs": 5
+      },
+      "id": "0661355c-6c9e-5cd3-a229-af25b4613646",
+      "name": "Collect results",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        2640,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "/* WF-C3 · One row per content item, ready for the ledger write-back.\n\n   Two divergences from the spec are resolved here, both forced by Batch B's\n   real schema:\n\n   1. `buffer_id` is ONE text column, but a single English reel goes to four\n      channels and comes back with four ids. Rather than drop three of them,\n      they are packed as \"instagram=123;linkedin=456\", which stays readable and\n      greppable in a text column. If only one channel published, it is still\n      just \"linkedin=456\".\n\n   2. The spec says write \"buffer_id and the scheduled time\". campaign.content\n      has no scheduled_for column; the only time column is published_at. So\n      published_at gets the time the post was accepted by the platform. A row\n      is marked published only if AT LEAST ONE channel actually succeeded, so a\n      total failure leaves published_at null and the item is picked up again on\n      the next Thursday rather than being silently marked done. */\n\nconst byContent = new Map();\nconst failures = [];\n\nfor (const item of $input.all()) {\n  const j = item.json || {};\n  if (j.__summary) continue;\n  if (!j.content_id) continue;\n\n  const rec = byContent.get(j.content_id) || {\n    content_id: j.content_id,\n    natural_key: j.natural_key,\n    language: j.language,\n    lane: j.lane,\n    hook: j.hook,\n    publisher: j.publisher || 'unknown',\n    ids: [],\n    platforms: [],\n    errors: [],\n  };\n  if (j.post_ok && j.post_id) {\n    rec.ids.push(j.channel + '=' + j.post_id);\n    rec.platforms.push(j.channel);\n  } else {\n    rec.errors.push(j.channel + ': ' + (j.post_error || 'unknown failure'));\n    failures.push({ content: j.natural_key, channel: j.channel, error: j.post_error });\n  }\n  byContent.set(j.content_id, rec);\n}\n\nconst out = [];\nfor (const rec of byContent.values()) {\n  const anyOk = rec.platforms.length > 0;\n  out.push({ json: {\n    cfg: $('Config').first().json.cfg,\n    content_id: rec.content_id,\n    natural_key: rec.natural_key,\n    language: rec.language,\n    lane: rec.lane,\n    hook: rec.hook,\n    publisher: rec.publisher,\n    any_published: anyOk,\n    platforms: rec.platforms,\n    buffer_id: rec.ids.join(';') || null,\n    errors: rec.errors,\n    patch: anyOk ? {\n      buffer_id: rec.ids.join(';'),\n      published_at: new Date().toISOString(),\n      platforms: rec.platforms,\n    } : null,\n  } });\n}\n\nif (out.length === 0) {\n  out.push({ json: { cfg: $('Config').first().json.cfg, content_id: null,\n                     any_published: false, nothing_to_do: true, patch: null } });\n}\nreturn out;\n"
+      },
+      "id": "b655e701-e54a-511e-91ed-02a082ccdafe",
+      "name": "Normalise for the ledger",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2860,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "b2f58ca4-10a9-5e9a-ab17-f993582eaf64",
+              "leftValue": "={{ $json.any_published }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "5223d225-65bf-559c-96da-4cdbb4766ccb",
+      "name": "IF anything published",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3080,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $json.cfg.ledger_url }}/rest/v1/content?id=eq.{{ $json.content_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "fullResponse": true
+            }
+          },
+          "timeout": 20000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Profile",
+              "value": "campaign"
+            },
+            {
+              "name": "Accept-Profile",
+              "value": "campaign"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.patch) }}"
+      },
+      "id": "79638c78-6af8-50f2-9dff-a90f2fd988d0",
+      "name": "Ledger: mark published",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3300,
+        -80
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "name": "Campaign Ledger (Supabase, campaign schema)"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {},
+      "id": "075e2deb-315f-5433-86ea-47ce275bced0",
+      "name": "Nothing published",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        3300,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "/* WF-C3 · The Thursday report to Dovy. Also the nudge for anything held. */\n\nfunction esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); }\n\nconst summary = $('Approval gate + channel map').all()\n  .map(i => i.json).find(j => j.__summary) || { held: [], ready: [] };\n\nconst results = $input.all().map(i => i.json).filter(j => j && !j.nothing_to_do);\nconst published = results.filter(r => r.any_published);\nconst failed = results.filter(r => !r.any_published);\n\nconst lines = [];\nlines.push('<p><b>' + published.length + '</b> item(s) published, <b>' +\n  failed.length + '</b> failed, <b>' + (summary.held || []).length +\n  '</b> held back.</p>');\n\nif (published.length) {\n  lines.push('<h3 style=\"font-size:15px\">Published</h3><ul>' + published.map(r =>\n    '<li>' + esc(r.natural_key) + ' (' + esc(r.language) + ') to ' +\n    esc(r.platforms.join(', ')) + ' via ' + esc(r.publisher) +\n    (r.errors.length ? '<br><span style=\"color:#a33\">partial: ' +\n      r.errors.map(esc).join('; ') + '</span>' : '') + '</li>').join('') + '</ul>');\n}\nif (failed.length) {\n  lines.push('<h3 style=\"font-size:15px\">Failed, will be retried next Thursday</h3><ul>' +\n    failed.map(r => '<li>' + esc(r.natural_key) + '<br><span style=\"color:#a33\">' +\n      r.errors.map(esc).join('<br>') + '</span></li>').join('') + '</ul>');\n}\nif ((summary.held || []).length) {\n  lines.push('<h3 style=\"font-size:15px\">Held back, nothing was posted</h3><ul>' +\n    summary.held.map(h => '<li><code>' + esc(h.natural_key) + '</code> (' +\n      esc(h.language) + ')<br><span style=\"color:#666\">' +\n      h.hold_reasons.map(esc).join('; ') + '</span></li>').join('') + '</ul>');\n  lines.push('<p style=\"font-size:13px;color:#666\">To approve one, POST ' +\n    '<code>{\"natural_key\":\"...\",\"approved_by\":\"dovy\"}</code> to the ' +\n    '<code>campaign/content-approve</code> webhook. Nothing publishes until you do. ' +\n    'There is no approved column in campaign.content to hold this, which is why ' +\n    'the list lives in n8n. See README and sql/004_consent.sql.</p>');\n}\n\nreturn [{ json: {\n  cfg: $('Config').first().json.cfg,\n  report_subject: '[Reels] ' + published.length + ' published, ' + failed.length +\n    ' failed, ' + (summary.held || []).length + ' held',\n  report_html: '<div style=\"font-family:system-ui,sans-serif;font-size:14px;line-height:1.6\">' +\n    lines.join('') + '</div>',\n} }];\n"
+      },
+      "id": "6bc443ab-604f-59e4-b838-f0b0cf09c262",
+      "name": "Build Thursday report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3520,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $json.cfg.from_email }}",
+        "toEmail": "={{ $json.cfg.dovy_email }}",
+        "subject": "={{ $json.report_subject }}",
+        "emailFormat": "html",
+        "html": "={{ $json.report_html }}",
+        "options": {}
+      },
+      "id": "a28cb154-cf4c-5efd-a7c6-43c85d623606",
+      "name": "Send: Thursday report",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        3740,
+        0
+      ],
+      "credentials": {
+        "smtp": {
+          "name": "DoviLoop campaign SMTP"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "campaign/content-approve",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "d6f09626-7c53-56ec-b618-e0df01e79a60",
+      "name": "Webhook — approve content",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        640,
+        620
+      ],
+      "notes": "The ONLY way a reel becomes publishable. Fails closed without it.",
+      "webhookId": "c32791e8-b049-5d72-9d33-ae1e768ab2c4"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "/* WF-C3 · Record an approval. This is the only thing that lets a post go out.\n\n   POST body: { \"natural_key\": \"reel:on_camera:en:some-hook\", \"approved_by\": \"dovy\" }\n   or         { \"natural_keys\": [\"...\", \"...\"], \"approved_by\": \"dovy\" }\n\n   Writes to workflow static data, which is what the approval gate reads, and\n   to a file so the decision survives an instance rebuild. */\n\nconst store = $getWorkflowStaticData('global');\nstore.approved = store.approved || {};\n\nconst out = [];\nfor (const item of $input.all()) {\n  const body = (item.json && item.json.body) || {};\n  const keys = []\n    .concat(body.natural_keys || [])\n    .concat(body.natural_key ? [body.natural_key] : [])\n    .map(k => String(k).trim())\n    .filter(Boolean);\n\n  const now = new Date().toISOString();\n  const revoke = body.revoke === true;\n\n  for (const k of keys) {\n    if (revoke) delete store.approved[k];\n    else store.approved[k] = now;\n  }\n\n  out.push({ json: {\n    ok: keys.length > 0,\n    action: revoke ? 'revoked' : 'approved',\n    keys: keys,\n    at: now,\n    approved_by: body.approved_by || null,\n    approved_total: Object.keys(store.approved).length,\n    line: JSON.stringify({ at: now, action: revoke ? 'revoked' : 'approved',\n                           keys: keys, by: body.approved_by || null }),\n  } });\n}\nreturn out;\n"
+      },
+      "id": "1ba95975-0cc5-51b1-8bf0-d2f6d817c599",
+      "name": "Record approval",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        860,
+        620
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "toText",
+        "sourceProperty": "line",
+        "options": {
+          "fileName": "content-approvals.jsonl",
+          "encoding": "utf8"
+        }
+      },
+      "id": "bf568a6b-0cdf-5d76-9504-885ad7b47193",
+      "name": "To file: approvals",
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        1080,
+        620
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "={{ $('Config').first().json.cfg.data_dir }}/content-approvals.jsonl",
+        "dataPropertyName": "data",
+        "options": {
+          "append": true
+        }
+      },
+      "id": "99eddc3e-ae05-5c2b-8226-66440641a72e",
+      "name": "Append content-approvals.jsonl",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        1300,
+        620
+      ],
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "Schedule: Thursday 08:00": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Guard: ledger target",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guard: ledger target": {
+      "main": [
+        [
+          {
+            "node": "Ledger: read unpublished content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ledger: read unpublished content": {
+      "main": [
+        [
+          {
+            "node": "Approval gate + channel map",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Approval gate + channel map": {
+      "main": [
+        [
+          {
+            "node": "IF a real post to make",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF a real post to make": {
+      "main": [
+        [
+          {
+            "node": "IF publisher is Buffer",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Normalise for the ledger",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF publisher is Buffer": {
+      "main": [
+        [
+          {
+            "node": "Buffer: createPost",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "IF platform is Meta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buffer: createPost": {
+      "main": [
+        [
+          {
+            "node": "Interpret Buffer response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Interpret Buffer response": {
+      "main": [
+        [
+          {
+            "node": "Collect results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF platform is Meta": {
+      "main": [
+        [
+          {
+            "node": "IF platform is Instagram",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "IF platform is YouTube",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF platform is Instagram": {
+      "main": [
+        [
+          {
+            "node": "IG: create reel container",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "FB page: post video",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IG: create reel container": {
+      "main": [
+        [
+          {
+            "node": "Wait for IG transcode",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait for IG transcode": {
+      "main": [
+        [
+          {
+            "node": "IG: publish container",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IG: publish container": {
+      "main": [
+        [
+          {
+            "node": "Normalise: Instagram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalise: Instagram": {
+      "main": [
+        [
+          {
+            "node": "Collect results",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "FB page: post video": {
+      "main": [
+        [
+          {
+            "node": "Normalise: Facebook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalise: Facebook": {
+      "main": [
+        [
+          {
+            "node": "Collect results",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "IF platform is YouTube": {
+      "main": [
+        [
+          {
+            "node": "Download asset (YouTube)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "IF platform is LinkedIn",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download asset (YouTube)": {
+      "main": [
+        [
+          {
+            "node": "YouTube: upload short",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "YouTube: upload short": {
+      "main": [
+        [
+          {
+            "node": "Normalise: YouTube",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalise: YouTube": {
+      "main": [
+        [
+          {
+            "node": "Collect results",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    },
+    "IF platform is LinkedIn": {
+      "main": [
+        [
+          {
+            "node": "Download asset (LinkedIn)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Unsupported channel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download asset (LinkedIn)": {
+      "main": [
+        [
+          {
+            "node": "LinkedIn: post video",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LinkedIn: post video": {
+      "main": [
+        [
+          {
+            "node": "Normalise: LinkedIn",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalise: LinkedIn": {
+      "main": [
+        [
+          {
+            "node": "Collect results",
+            "type": "main",
+            "index": 4
+          }
+        ]
+      ]
+    },
+    "Collect results": {
+      "main": [
+        [
+          {
+            "node": "Normalise for the ledger",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalise for the ledger": {
+      "main": [
+        [
+          {
+            "node": "IF anything published",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF anything published": {
+      "main": [
+        [
+          {
+            "node": "Ledger: mark published",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Nothing published",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ledger: mark published": {
+      "main": [
+        [
+          {
+            "node": "Build Thursday report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Nothing published": {
+      "main": [
+        [
+          {
+            "node": "Build Thursday report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Thursday report": {
+      "main": [
+        [
+          {
+            "node": "Send: Thursday report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook — approve content": {
+      "main": [
+        [
+          {
+            "node": "Record approval",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Record approval": {
+      "main": [
+        [
+          {
+            "node": "To file: approvals",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "To file: approvals": {
+      "main": [
+        [
+          {
+            "node": "Append content-approvals.jsonl",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Copenhagen",
+    "saveManualExecutions": true,
+    "saveExecutionProgress": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all"
+  },
+  "pinData": {},
+  "tags": [],
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "versionId": "83662119-f5aa-5796-bdb7-46940d93d2d3"
+}

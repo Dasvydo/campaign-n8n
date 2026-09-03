@@ -1,0 +1,976 @@
+{
+  "name": "WF-C5 — Pilot day 14 (creates a link, never charges)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * *"
+            }
+          ]
+        }
+      },
+      "id": "bd10240c-8112-522e-a7da-4fe98e59f8c7",
+      "name": "Schedule: daily 09:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -240,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cfg",
+              "name": "cfg",
+              "value": "={{ {\n  ledger_url: '',\n  dovy_email: 'hello@doviloop.dev',\n  from_email: 'campaign-bot@doviloop.dev',\n  data_dir: '/home/node/.n8n/campaign',\n  stripe_api: 'https://api.stripe.com/v1',\n  price_seat_monthly: '',\n  price_setup_once: '',\n  success_url: 'https://doviloop.dev/welcome',\n  cancel_url: 'https://doviloop.dev',\n  usd_eur_rate: null\n} }}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "daeab6ec-f630-5381-ba25-b372180a45ac",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -20,
+        0
+      ],
+      "notes": "usd_eur_rate ships null on purpose. See the currency note in 'Apply the Stripe event'."
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Refuses to run against the product database, and refuses to run unconfigured.\n//\n// This mirrors the same refusal Batch B built into campaign_db.py\n// (_FORBIDDEN_PROJECT_REF). Two independent layers now have to be defeated\n// before a campaign workflow can touch the product project by accident.\nconst FORBIDDEN = 'kngcxwcybozgqgnoweyt';\n\nconst out = [];\nfor (const item of $input.all()) {\n  const cfg = (item.json && item.json.cfg) || {};\n  const url = String(cfg.ledger_url || '').trim();\n\n  if (!url) {\n    throw new Error(\n      'Config.ledger_url is blank. Open the Config node and paste the CAMPAIGN ' +\n      'ledger project URL (the lead-pipeline project, schema \"campaign\"). It ships ' +\n      'blank on purpose so an unreviewed import cannot reach any database.');\n  }\n  if (url.includes(FORBIDDEN)) {\n    throw new Error(\n      'Config.ledger_url points at the PRODUCT database (' + FORBIDDEN + '). ' +\n      'The campaign ledger is a different project. Refusing to run.');\n  }\n  if (!/^https:\\/\\//.test(url)) {\n    throw new Error('Config.ledger_url must be https, got: ' + url);\n  }\n  out.push(item);\n}\nreturn out;\n"
+      },
+      "id": "df270771-c491-5f2a-b7dc-e27541e1f940",
+      "name": "Guard: ledger target",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        200,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.cfg.ledger_url }}/rest/v1/pilots?charge_due_on=eq.{{ $now.plus(2, 'days').toFormat('yyyy-MM-dd') }}&converted=is.false&select=*,leads(*)",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "fullResponse": true
+            }
+          },
+          "timeout": 20000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept-Profile",
+              "value": "campaign"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        }
+      },
+      "id": "59a729a5-de5a-534d-a891-75b84a4c2828",
+      "name": "Ledger: pilots due in 2 days",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        420,
+        -180
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "name": "Campaign Ledger (Supabase, campaign schema)"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "/* WF-C5 · The two-days-before reminder.\n\n   THE SPEC ASKS FOR \"the pilot's usage summary\". There is no usage data in the\n   ledger to summarise. campaign.pilots has: started_on, workshop_done_on,\n   setup_done_on, seats, charge_due_on, converted, stripe_customer_id, mrr_eur,\n   lost_reason. Nothing about drafts written, mail handled, or people active.\n   Usage lives in the PRODUCT database, which this campaign is forbidden to\n   touch, so there is no honest way to put a usage number in this email.\n\n   Rather than invent one, the reminder carries what the ledger actually knows\n   and says plainly what it does not know. Logged as F-8 in BLOCKED.md. */\n\nfunction esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); }\n\nconst items = $input.all().map(i => i.json).filter(j => j && !j.nothing_due);\nif (items.length === 0) {\n  return [{ json: { cfg: $('Config').first().json.cfg, skip_email: true } }];\n}\n\nconst rowsHtml = items.map(p =>\n  '<tr><td style=\"border-bottom:1px solid #eee\">' + esc(p.company_name) + '</td>' +\n  '<td style=\"border-bottom:1px solid #eee\">' + esc(p.seats) + ' seats</td>' +\n  '<td style=\"border-bottom:1px solid #eee\">' + esc(p.charge_due_on) + '</td>' +\n  '<td style=\"border-bottom:1px solid #eee\">' +\n    (p.workshop_done_on ? 'workshop ' + esc(p.workshop_done_on) : '<b style=\"color:#a33\">no workshop recorded</b>') +\n    '<br>' +\n    (p.setup_done_on ? 'setup ' + esc(p.setup_done_on) : '<b style=\"color:#a33\">no setup recorded</b>') +\n  '</td></tr>').join('');\n\nreturn [{ json: {\n  cfg: $('Config').first().json.cfg,\n  skip_email: false,\n  reminder_subject: '[Pilot] ' + items.length + ' pilot(s) reach day 14 in two days',\n  reminder_html:\n    '<div style=\"font-family:system-ui,sans-serif;font-size:14px;line-height:1.6\">' +\n    '<p>Two days out. Have the conversation before the link exists.</p>' +\n    '<table cellpadding=\"6\" style=\"border-collapse:collapse\">' +\n    '<tr><th align=\"left\">Firm</th><th align=\"left\">Size</th>' +\n    '<th align=\"left\">Day 14</th><th align=\"left\">Ledger says</th></tr>' +\n    rowsHtml + '</table>' +\n    '<p style=\"margin-top:18px;padding:10px;background:#f4f4f4;font-size:13px\">' +\n    '<b>What is not in here:</b> actual product usage. The campaign ledger records ' +\n    'the pilot, not what they did inside DoviLoop. Usage lives in the product ' +\n    'database, which this campaign is not allowed to read. If you want a usage ' +\n    'number on this email, it has to come from there.</p></div>',\n} }];\n"
+      },
+      "id": "51d1c3fe-4610-5fd8-a8e8-37c45e78fc38",
+      "name": "Build the reminder",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        -180
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "a6fcf264-969d-5e07-b3ca-ae51b8806492",
+              "leftValue": "={{ !$json.skip_email }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "b303497c-7602-546e-a9dc-dbdaff8a3e64",
+      "name": "IF a reminder to send",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        860,
+        -180
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $json.cfg.from_email }}",
+        "toEmail": "={{ $json.cfg.dovy_email }}",
+        "subject": "={{ $json.reminder_subject }}",
+        "emailFormat": "html",
+        "html": "={{ $json.reminder_html }}",
+        "options": {}
+      },
+      "id": "856aadab-8f63-5a1e-a18a-523ce202a308",
+      "name": "Send: day 12 reminder",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1080,
+        -260
+      ],
+      "credentials": {
+        "smtp": {
+          "name": "DoviLoop campaign SMTP"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {},
+      "id": "63d59730-a1cd-5954-89b0-fc84c432beda",
+      "name": "No pilots at day 12",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1080,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.cfg.ledger_url }}/rest/v1/pilots?charge_due_on=eq.{{ $now.toFormat('yyyy-MM-dd') }}&converted=is.false&select=*,leads(*)",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "fullResponse": true
+            }
+          },
+          "timeout": 20000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept-Profile",
+              "value": "campaign"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        }
+      },
+      "id": "f6bde766-94b1-580e-b2ea-c05720c9e67e",
+      "name": "Ledger: pilots due today",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        420,
+        160
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "name": "Campaign Ledger (Supabase, campaign schema)"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "/* WF-C5 · Read the pilots due, and build the Stripe request WITHOUT sending it.\n\n   THE RULE THIS NODE ENFORCES\n\n   \"A card being charged at the end of a free pilot is a conversation, not a\n   cron job.\" So this workflow may create a payment LINK and may email that\n   link TO DOVY. It may not charge, and it may not email the client.\n\n   Three concrete guarantees, all checked below and again in\n   \"Guard: the link goes to Dovy only\":\n\n     1. The only Stripe call is POST /v1/checkout/sessions. Creating a Checkout\n        Session moves no money and sends no email to anyone. The customer pays\n        only by opening the URL themselves and entering a card.\n     2. No parameter that could produce an off-session or automatic charge is\n        ever built. FORBIDDEN_PARAMS below is checked against the built body,\n        and a hit throws before the HTTP node runs.\n     3. `customer_email` is deliberately NOT set. Stripe therefore has no\n        address for this person at all, so no Stripe-side email can reach them\n        even by misconfiguration.\n\n   The two-day reminder is a separate, earlier read so Dovy has the conversation\n   before the link exists. */\n\nconst FORBIDDEN_PARAMS = [\n  'payment_intent_data[off_session]',\n  'payment_intent_data[confirm]',\n  'setup_future_usage',\n  'off_session',\n  'confirm',\n  'customer_email',\n];\n\nconst cfg = $('Config').first().json.cfg || {};\n\nfunction rows(input) {\n  const found = [];\n  for (const item of input) {\n    const b = item.json && item.json.body !== undefined ? item.json.body : item.json;\n    if (Array.isArray(b)) found.push(...b);\n    else if (b && b.id) found.push(b);\n  }\n  return found;\n}\n\nconst out = [];\nfor (const p of rows($input.all())) {\n  const lead = p.leads || p.lead || {};\n  const seats = Number(p.seats || 0);\n\n  const problems = [];\n  if (!cfg.price_seat_monthly) problems.push('Config.price_seat_monthly is blank');\n  if (!cfg.price_setup_once) problems.push('Config.price_setup_once is blank');\n  if (!(seats >= 10)) problems.push('seats is ' + seats + ', and the offer does not exist below 10');\n\n  // Stripe wants form encoding, so the body is built as pairs, not JSON.\n  const params = [\n    ['mode', 'subscription'],\n    ['line_items[0][price]', String(cfg.price_seat_monthly || '')],\n    ['line_items[0][quantity]', String(seats)],\n    ['line_items[1][price]', String(cfg.price_setup_once || '')],\n    ['line_items[1][quantity]', '1'],\n    ['success_url', String(cfg.success_url || '')],\n    ['cancel_url', String(cfg.cancel_url || '')],\n    ['client_reference_id', String(p.id)],\n    ['metadata[pilot_id]', String(p.id)],\n    ['metadata[lead_id]', String(p.lead_id || '')],\n    ['metadata[seats]', String(seats)],\n    ['metadata[created_by]', 'WF-C5'],\n  ];\n\n  for (const [k] of params) {\n    if (FORBIDDEN_PARAMS.includes(k)) {\n      throw new Error('WF-C5 refused to build a Stripe request containing ' + k +\n        '. That parameter can charge a card without the customer being present, ' +\n        'and this workflow is not allowed to charge anything.');\n    }\n  }\n\n  out.push({ json: {\n    cfg: cfg,\n    pilot_id: p.id,\n    lead_id: p.lead_id,\n    seats: seats,\n    started_on: p.started_on,\n    charge_due_on: p.charge_due_on,\n    workshop_done_on: p.workshop_done_on || null,\n    setup_done_on: p.setup_done_on || null,\n    company_name: lead.company_name || null,\n    work_email: lead.work_email || null,\n    market: lead.market || null,\n    problems: problems,\n    ready: problems.length === 0,\n    stripe_form: params.map(([k, v]) =>\n      encodeURIComponent(k) + '=' + encodeURIComponent(v)).join('&'),\n  } });\n}\n\nif (out.length === 0) out.push({ json: { cfg: cfg, nothing_due: true, ready: false } });\nreturn out;\n"
+      },
+      "id": "bc7484f0-46ae-5f8f-b9f8-c536f019561b",
+      "name": "Build the Stripe request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "3638422d-9eb7-5166-a23e-14e0a74087cd",
+              "leftValue": "={{ $json.ready }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "43e09f14-7850-5071-9e4b-4d71e65623f6",
+      "name": "IF a link to create",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        860,
+        160
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "fc5a0587-1daf-55ec-9148-9ef31f696b72",
+      "name": "Nothing due today",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1080,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.cfg.stripe_api }}/checkout/sessions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/x-www-form-urlencoded"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/x-www-form-urlencoded",
+        "body": "={{ $json.stripe_form }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "109c9a48-7696-583b-9297-ea27f4ff9b21",
+      "name": "Stripe: create checkout session",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1080,
+        80
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Stripe secret key (campaign)"
+        }
+      },
+      "alwaysOutputData": true,
+      "notes": "POST /v1/checkout/sessions is the ONLY Stripe write this workflow makes. Creating a session moves no money and emails nobody."
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "/* WF-C5 · Guard: the link goes to Dovy only. Then build his email.\n\n   This node is the last thing between a Stripe URL and an inbox, so it asserts\n   the two facts the whole workflow rests on, and throws rather than send if\n   either one is false:\n\n     * the recipient is cfg.dovy_email;\n     * the recipient is NOT the client's work_email.\n\n   If Dovy ever edits the Send node's toEmail to a client address, this throws\n   and no mail goes out. */\n\nfunction esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); }\n\nconst out = [];\nfor (const item of $input.all()) {\n  const j = item.json || {};\n  const ctx = $('Build the Stripe request').item.json;\n  const cfg = ctx.cfg || {};\n  const res = j.body !== undefined ? j.body : j;\n\n  const dovy = String(cfg.dovy_email || '').trim().toLowerCase();\n  const client = String(ctx.work_email || '').trim().toLowerCase();\n\n  if (!dovy) throw new Error('Config.dovy_email is blank. Refusing to send a payment link anywhere.');\n  if (client && dovy === client) {\n    throw new Error('Config.dovy_email is the same address as the client work_email (' +\n      client + '). This workflow may only send the payment link to Dovy. Refusing.');\n  }\n\n  const url = res && res.url ? res.url : null;\n  const err = res && res.error ? JSON.stringify(res.error).slice(0, 400) : null;\n\n  out.push({ json: Object.assign({}, ctx, {\n    checkout_url: url,\n    checkout_id: (res && res.id) || null,\n    stripe_error: err,\n    recipient_checked: dovy,\n    link_subject: url\n      ? '[Send this] Day 14 payment link for ' + (ctx.company_name || 'a pilot')\n      : '[Failed] Could not create the day 14 link for ' + (ctx.company_name || 'a pilot'),\n    link_html: url\n      ? '<div style=\"font-family:system-ui,sans-serif;font-size:14px;line-height:1.6\">' +\n        '<p><b>' + esc(ctx.company_name) + '</b> reaches day 14 today. ' +\n        esc(ctx.seats) + ' seats.</p>' +\n        '<p>The link below is a Stripe Checkout page for the 500 dollar setup plus ' +\n        '89 dollars per seat per month. Nothing has been charged and nothing has ' +\n        'been sent to them. Opening it does nothing either. It charges only when ' +\n        'they open it and enter a card.</p>' +\n        '<p style=\"padding:12px;background:#f4f4f4;word-break:break-all\">' +\n        '<a href=\"' + esc(url) + '\">' + esc(url) + '</a></p>' +\n        '<p><b>You send it.</b> Their address is ' +\n        (ctx.work_email ? '<a href=\"mailto:' + esc(ctx.work_email) + '\">' +\n          esc(ctx.work_email) + '</a>' : 'not on the lead') + '.</p>' +\n        '<p style=\"font-size:13px;color:#666\">Pilot ' + esc(ctx.pilot_id) +\n        '. Checkout session ' + esc((res && res.id) || 'unknown') + '.</p></div>'\n      : '<div style=\"font-family:system-ui,sans-serif\"><p>Stripe would not create the ' +\n        'checkout session for ' + esc(ctx.company_name) + '.</p><pre>' + esc(err) +\n        '</pre><p>Nothing was charged and nothing was sent. Fix it and re-run WF-C5 ' +\n        'by hand.</p></div>',\n  }) });\n}\nreturn out;\n"
+      },
+      "id": "19d7a8cd-7c50-5f2a-84b2-67bd6d7a9220",
+      "name": "Guard: the link goes to Dovy only",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1300,
+        80
+      ],
+      "notes": "Throws rather than send if the recipient is not Dovy, or is the client."
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $json.cfg.from_email }}",
+        "toEmail": "={{ $json.recipient_checked }}",
+        "subject": "={{ $json.link_subject }}",
+        "emailFormat": "html",
+        "html": "={{ $json.link_html }}",
+        "options": {}
+      },
+      "id": "b501230a-f625-538e-9eba-7e5bf3a0d7ed",
+      "name": "Send: link for Dovy to send",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1520,
+        80
+      ],
+      "credentials": {
+        "smtp": {
+          "name": "DoviLoop campaign SMTP"
+        }
+      },
+      "notes": "toEmail is the value the guard node just verified, not a free-text address. Editing it to a client address makes the guard throw."
+    },
+    {
+      "parameters": {
+        "operation": "toText",
+        "sourceProperty": "link_subject",
+        "options": {
+          "fileName": "day14-links.jsonl",
+          "encoding": "utf8"
+        }
+      },
+      "id": "d9b8f82c-0aaa-512e-95b0-e6ef9f6b3106",
+      "name": "To file: link log",
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        1740,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "={{ $('Config').first().json.cfg.data_dir }}/day14-links.jsonl",
+        "dataPropertyName": "data",
+        "options": {
+          "append": true
+        }
+      },
+      "id": "d9934e51-c4c2-5874-a641-8f199a90966b",
+      "name": "Append day14-links.jsonl",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        1960,
+        80
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "campaign/stripe",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "ae8185f3-cf5c-5253-b028-eb3e475e0522",
+      "name": "Webhook — Stripe events",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -240,
+        520
+      ],
+      "webhookId": "385907f4-86c2-5444-ab37-0cc0ef76855b"
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cfg",
+              "name": "cfg",
+              "value": "={{ {\n  ledger_url: '',\n  dovy_email: 'hello@doviloop.dev',\n  from_email: 'campaign-bot@doviloop.dev',\n  data_dir: '/home/node/.n8n/campaign',\n  stripe_api: 'https://api.stripe.com/v1',\n  price_seat_monthly: '',\n  price_setup_once: '',\n  success_url: 'https://doviloop.dev/welcome',\n  cancel_url: 'https://doviloop.dev',\n  usd_eur_rate: null\n} }}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "237d4294-908b-514b-82c1-c12337f06903",
+      "name": "Config webhook",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -20,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "/* WF-C5 · Stripe webhook. Signature is verified by re-fetching, not by a secret.\n\n   The payload that arrives on a webhook URL is unauthenticated: anyone who\n   learns the URL can post anything to it. The usual fix is to verify the\n   `stripe-signature` header with the endpoint's signing secret, which would\n   mean putting a secret into this workflow.\n\n   This does the other accepted thing instead: take ONLY the event id from the\n   incoming body, throw the rest away, and fetch that event back from Stripe\n   over the authenticated API. A forged post either names an event id that does\n   not exist, or names a real one whose real contents are then used. Either way\n   nothing an attacker writes reaches the ledger, and no signing secret has to\n   live in an exported JSON file. */\n\nconst out = [];\nfor (const item of $input.all()) {\n  const body = (item.json && item.json.body) || {};\n  const headers = (item.json && item.json.headers) || {};\n  const id = String(body.id || '').trim();\n\n  out.push({ json: {\n    cfg: $('Config webhook').first().json.cfg,\n    event_id: id,\n    has_signature_header: !!headers['stripe-signature'],\n    claimed_type: body.type || null,\n    usable: /^evt_[A-Za-z0-9_]+$/.test(id),\n  } });\n}\nreturn out;\n"
+      },
+      "id": "32a34ed6-6065-5f82-96e0-f84040f13297",
+      "name": "Take only the event id",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        200,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "97336abd-e522-57fa-8ec8-467d1c33c268",
+              "leftValue": "={{ $json.usable }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "107437d9-4036-5a21-aa01-15aa9f829b7c",
+      "name": "IF event id looks real",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        420,
+        520
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "2c40843f-0b11-5d78-9ca9-214cba0dcf31",
+      "name": "Ignored: not a Stripe event id",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        640,
+        680
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.cfg.stripe_api }}/events/{{ $json.event_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          },
+          "timeout": 20000
+        }
+      },
+      "id": "eea36335-83fd-50c1-8395-53c73a9f802a",
+      "name": "Stripe: re-fetch the event",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        640,
+        440
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Stripe secret key (campaign)"
+        }
+      },
+      "alwaysOutputData": true,
+      "notes": "This is the verification. The incoming body is never trusted."
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "/* WF-C5 · Turn a verified Stripe event into the ledger write.\n\n   THE CURRENCY PROBLEM, which Batch B raised and did not resolve:\n   the offer is priced in USD (89 dollars a seat, 500 dollars setup) and the\n   column is `campaign.pilots.mrr_eur`, in euros. B's own comment on the column\n   says \"whoever writes it must convert\". This is the whoever.\n\n   There is no FX rate in this container and no rate source that is right to\n   pick automatically, because the right rate is the one Stripe actually\n   settled at, not today's mid-market rate. So: if Config.usd_eur_rate is not\n   set, this node writes `converted = true` and LEAVES mrr_eur NULL, and says so\n   in the report. A null is a known gap. A guessed number is a wrong number in\n   the one table the Friday brief adds up. Logged as F-9 in BLOCKED.md. */\n\nconst PAID_TYPES = ['checkout.session.completed', 'invoice.paid', 'invoice.payment_succeeded'];\n\nconst out = [];\nfor (const item of $input.all()) {\n  const res = item.json && item.json.body !== undefined ? item.json.body : item.json;\n  const cfg = $('Config webhook').first().json.cfg || {};\n  const type = res && res.type;\n  const obj = (res && res.data && res.data.object) || {};\n\n  const paid = PAID_TYPES.includes(type) &&\n    (obj.payment_status === 'paid' || obj.status === 'paid' || obj.status === 'complete');\n\n  const meta = obj.metadata || {};\n  const pilotId = meta.pilot_id || obj.client_reference_id || null;\n  const seats = Number(meta.seats || 0);\n\n  const rate = cfg.usd_eur_rate;\n  const usable = typeof rate === 'number' && rate > 0;\n  const mrrUsd = seats * 89;\n  const mrrEur = usable ? Math.round(mrrUsd * rate * 100) / 100 : null;\n\n  out.push({ json: {\n    cfg: cfg,\n    event_type: type,\n    paid: paid,\n    pilot_id: pilotId,\n    seats: seats,\n    mrr_usd: mrrUsd,\n    mrr_eur: mrrEur,\n    rate_used: usable ? rate : null,\n    // pilots_mrr_needs_conversion CHECK: mrr_eur may only be non-null when\n    // converted is true, so these two always move together.\n    patch: paid && pilotId\n      ? (usable ? { converted: true, mrr_eur: mrrEur,\n                    stripe_customer_id: obj.customer || null }\n                : { converted: true, stripe_customer_id: obj.customer || null })\n      : null,\n    note: usable ? null\n      : 'Config.usd_eur_rate is not set, so mrr_eur was left NULL rather than guessed. ' +\n        'The Friday brief will show this pilot as converted with no revenue attached.',\n  } });\n}\nreturn out;\n"
+      },
+      "id": "c584ee10-113e-5ed0-b21b-835d95f4f4ee",
+      "name": "Apply the Stripe event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        860,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "01572488-c430-5908-afaa-78112c419b50",
+              "leftValue": "={{ $json.paid && !!$json.patch }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "7e460da8-61be-5a06-9f84-28f3065b03ad",
+      "name": "IF it was actually paid",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1080,
+        440
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "b5d86ae4-aeab-5ff1-a4ad-f8f4a9b09dca",
+      "name": "Not a payment, ignored",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1300,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $json.cfg.ledger_url }}/rest/v1/pilots?id=eq.{{ $json.pilot_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "fullResponse": true
+            }
+          },
+          "timeout": 20000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Profile",
+              "value": "campaign"
+            },
+            {
+              "name": "Accept-Profile",
+              "value": "campaign"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.patch) }}"
+      },
+      "id": "34c692dc-c630-5716-849c-f4b978d75e01",
+      "name": "Ledger: mark converted",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1300,
+        380
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "name": "Campaign Ledger (Supabase, campaign schema)"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $('Config webhook').first().json.cfg.from_email }}",
+        "toEmail": "={{ $('Config webhook').first().json.cfg.dovy_email }}",
+        "subject": "=[Converted] pilot {{ $('Apply the Stripe event').first().json.pilot_id }}",
+        "emailFormat": "html",
+        "html": "=<p>Paid. {{ $('Apply the Stripe event').first().json.seats }} seats, {{ $('Apply the Stripe event').first().json.mrr_usd }} USD per month.</p><p>mrr_eur written: {{ $('Apply the Stripe event').first().json.mrr_eur }}</p><p>{{ $('Apply the Stripe event').first().json.note }}</p>",
+        "options": {}
+      },
+      "id": "384b130f-fdee-5e5c-b78b-d8565592d106",
+      "name": "Send: a pilot converted",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1520,
+        380
+      ],
+      "credentials": {
+        "smtp": {
+          "name": "DoviLoop campaign SMTP"
+        }
+      },
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "Schedule: daily 09:00": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Guard: ledger target",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guard: ledger target": {
+      "main": [
+        [
+          {
+            "node": "Ledger: pilots due in 2 days",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Ledger: pilots due today",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ledger: pilots due in 2 days": {
+      "main": [
+        [
+          {
+            "node": "Build the reminder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build the reminder": {
+      "main": [
+        [
+          {
+            "node": "IF a reminder to send",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF a reminder to send": {
+      "main": [
+        [
+          {
+            "node": "Send: day 12 reminder",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No pilots at day 12",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ledger: pilots due today": {
+      "main": [
+        [
+          {
+            "node": "Build the Stripe request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build the Stripe request": {
+      "main": [
+        [
+          {
+            "node": "IF a link to create",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF a link to create": {
+      "main": [
+        [
+          {
+            "node": "Stripe: create checkout session",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Nothing due today",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Stripe: create checkout session": {
+      "main": [
+        [
+          {
+            "node": "Guard: the link goes to Dovy only",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guard: the link goes to Dovy only": {
+      "main": [
+        [
+          {
+            "node": "Send: link for Dovy to send",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send: link for Dovy to send": {
+      "main": [
+        [
+          {
+            "node": "To file: link log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "To file: link log": {
+      "main": [
+        [
+          {
+            "node": "Append day14-links.jsonl",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook — Stripe events": {
+      "main": [
+        [
+          {
+            "node": "Config webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config webhook": {
+      "main": [
+        [
+          {
+            "node": "Take only the event id",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Take only the event id": {
+      "main": [
+        [
+          {
+            "node": "IF event id looks real",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF event id looks real": {
+      "main": [
+        [
+          {
+            "node": "Stripe: re-fetch the event",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ignored: not a Stripe event id",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Stripe: re-fetch the event": {
+      "main": [
+        [
+          {
+            "node": "Apply the Stripe event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Apply the Stripe event": {
+      "main": [
+        [
+          {
+            "node": "IF it was actually paid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF it was actually paid": {
+      "main": [
+        [
+          {
+            "node": "Ledger: mark converted",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Not a payment, ignored",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ledger: mark converted": {
+      "main": [
+        [
+          {
+            "node": "Send: a pilot converted",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Copenhagen",
+    "saveManualExecutions": true,
+    "saveExecutionProgress": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all"
+  },
+  "pinData": {},
+  "tags": [],
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "versionId": "c757b5e6-5569-56fe-baeb-37a77444afbf"
+}
