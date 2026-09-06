@@ -307,13 +307,22 @@ check('the unsubscribe href is HTML-escaped, so the &-joined query survives',
   escapedUnsub.includes('?e=jo%40twodeskbooks.example&amp;t='));
 check('NO em dash appears in any of the three emails (voice rule)',
   !['e1', 'e2', 'e3'].some(k => /—/.test(emails.emails[k].html)));
-check('THE ROI CONTRADICTION: email 2 carries no ROI figure',
-  !/\b9x\b|400\s*(EUR|€|a month saved)|40[- ]day payback|\bROI\b/i
-    .test(emails.emails.e2.html.replace(/<!--[\s\S]*?-->/g, '')));
-check('email 2 still works without them: it says plainly that no customer numbers exist yet',
-  emails.emails.e2.html.includes('we do not have a customer'));
-check('the ROI slot exists in the node source, clearly marked, and ships empty',
-  /ROI SLOT[\s\S]*const ROI_BLOCK = '';/
+// Decision 2026-09-06: the ROI figures are MODELLED, not measured. Email 2
+// carries them as a worked example and must say so in the same paragraph.
+const e2 = emails.emails.e2.html.replace(/<!--[\s\S]*?-->/g, '');
+const roiPara = (e2.match(/<p><b>On the numbers\.<\/b>[\s\S]*?<\/p>/) || [''])[0];
+check('email 2 carries all three modelled figures (9x, 400 EUR a month, 40 days)',
+  /\b9x\b/.test(roiPara) && /400 EUR a month/.test(roiPara) && /40 days/.test(roiPara));
+check('and the SAME paragraph says they are a model, not a customer result',
+  /a model, not a customer result/.test(roiPara) && /Nothing has been measured/.test(roiPara));
+check('and shows the arithmetic: assumed hours, costed at a salary',
+  /10 hours a month/.test(roiPara) && /40 EUR an hour/.test(roiPara) && /mid level salary/.test(roiPara));
+check('and never claims a measurement, verification or a customer behind them',
+  !/measured usage|verified|our customers|clients have seen|firms like yours have seen/i.test(roiPara));
+check('email 2 still says plainly that no customer numbers exist yet',
+  e2.includes('we do not have a customer'));
+check('the ROI block in the node source is non-empty and records the decision',
+  /DECISION, Dovy, 2026-09-06[\s\S]*const ROI_BLOCK =\s*'<p>/
     .test(nodeOf('WF-C2', 'Build the three emails').parameters.jsCode));
 
 const unsub = r2.run('WF-C2', 'Record opt-out',
@@ -582,6 +591,13 @@ const touchLine = JSON.parse(touch.line);
 check('the touch is journalled with the two named reasons it cannot go in campaign.touches',
   touchLine.not_in_campaign_touches_because.length === 2 &&
   touchLine.channel === 'instagram_dm');
+check('an outbound DM carries no reply sentiment (the field is present and null)',
+  'reply_sentiment' in touchLine && touchLine.reply_sentiment === null);
+// Taxonomy decision 2026-09-06: interested, not_now, not_a_fit, referred,
+// objection, unsubscribe. The superseded values must not survive anywhere.
+check('no Code node in any workflow names a superseded sentiment value',
+  ['WF-C1', 'WF-C2', 'WF-C3', 'WF-C4', 'WF-C5', 'WF-C6'].every(w =>
+    !/\b(hot_pain|curious|endorse|unrelated|ineligible)\b/.test(JSON.stringify(wf(w)))));
 
 section('WF-C5 · a link, never a charge');
 

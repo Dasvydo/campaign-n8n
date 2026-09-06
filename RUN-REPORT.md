@@ -421,3 +421,81 @@ Every one of those refusals is a place where the spec, read literally, would hav
 sent something to a real person that nobody had approved. They are all cheap to
 turn off later once the missing consent, approval or evidence actually exists.
 None of them is cheap to undo after it has already sent.
+
+---
+
+## Decisions applied, 2026-09-06
+
+Dovy made four campaign-wide decisions. This section records each one and what
+changed in this repo as a result. Branch `campaign/f-n8n`, one commit on top of
+`954f7ad`. Nothing outside `/home/user/campaign-n8n` was written.
+
+**1. The ROI figures are modelled, not measured.** The ~9x return, ~400 EUR a
+month per seat and ~40 day payback are outputs of a model that assumes time
+saved per seat and costs it at a salary. No customer has been measured. Same
+decision as `ad-engine/claims/evidence.json` `roi_model`, which allows the
+figures only when the same copy calls them a model or a worked example.
+*Changed here:* `ROI_BLOCK` in WF-C2's "Build the three emails" node is filled
+(`tools/build_workflows.py`, rebuilt into `workflows/WF-C2.json`). Email 2 now
+carries the three figures as a worked example: 10 assumed hours a month, costed
+at about 40 EUR an hour, giving about 400 EUR a month per seat; about 9x on the
+seat cost; about 40 days to pay back the 500 dollar setup fee plus the first
+month of seats. The same paragraph says "a model, not a customer result" and
+"Nothing has been measured against a real firm yet", and the paragraph after
+it still says no customer numbers exist. The node header now records the
+decision instead of arguing against the figures. Divergence 4 above is
+therefore superseded. `test/run-code-nodes.mjs` replaces its three "no ROI
+figure" assertions with six that require the figures, the arithmetic and the
+framing in one paragraph, and that no measurement or customer is claimed.
+`BLOCKED.md` F-5 is marked resolved. No em dash, English only, casual register.
+*One thing left for Dovy, recorded in F-5:* 400 EUR against an 89 USD seat
+(about 82 EUR) is roughly 5x; 9x holds against a seat near 45 EUR, where the
+superseded 49 USD price sat. The email attributes the 9x to "our model", as the
+landing page does, rather than deriving it from the shown division.
+
+**2. Price is 89 USD per seat per month plus 500 USD one-off setup.**
+*Changed here:* nothing in the workflows. WF-C5's Checkout Session already
+builds `line_items[0]` as the `price_seat_monthly` Price times `seats` and
+`line_items[1]` as the `price_setup_once` Price once; its email to Dovy says
+"the 500 dollar setup plus 89 dollars per seat per month"; its MRR arithmetic
+is `seats * 89`; `CREDENTIALS.md` §7 names the two Prices as 89 USD recurring
+and 500 USD one-off. A grep of every file for `49` and `99` finds only the
+`25-49` team-size band and unrelated numbers. Neither nurture email states a
+price; email 1 says the smaller plan "costs a lot less" and links to pricing.
+`README.md` gained a short paragraph under WF-C5 stating the offer and where
+the amounts live.
+
+**3. Reply sentiment taxonomy is `interested, not_now, not_a_fit, referred,
+objection, unsubscribe`.** The old values (`hot_pain`, `curious`, `endorse`,
+`unrelated`, `ineligible`) are gone from the ledger enum.
+*Found here:* no workflow node, Code node body, sample payload, README table or
+CREDENTIALS note ever named any sentiment value, old or new. WF-C4's touch is
+the DM going out, not a reply, so it wrote no sentiment. WF-C6 runs
+`friday_brief.py` and renders its markdown; it classifies nothing.
+*Changed here:* WF-C4's journal line now carries an explicit
+`reply_sentiment: null` with a comment naming the six legal values, so the
+shape matches a future `campaign.touches` insert. `tools/validate.mjs` now
+errors on any of the five superseded values anywhere in an export, and
+`tools/validate-selftest.mjs` proves it (16 cases now). `test/run-code-nodes.mjs`
+asserts the null and the absence of superseded values in all six workflows.
+`README.md` states both under WF-C4.
+
+**4. Ledger project `oqpeebtwtikdzorgouxd` is confirmed.**
+*Changed here:* `ledger_url` in all six Config nodes is pre-filled with
+`https://oqpeebtwtikdzorgouxd.supabase.co` instead of shipping blank; the
+Config node note and the guard's blank-URL message say so. The guard still
+throws on blank, non-https or the product ref `kngcxwcybozgqgnoweyt`.
+`CREDENTIALS.md` §1 names the project as confirmed. `README.md`'s import
+section and Config table no longer ask Dovy to fill or confirm it, and its
+"See also" notes that `sql/004_consent.sql` targets that project's `campaign`
+schema; the SQL header says the same. `BLOCKED.md` F-12 notes the project is
+confirmed but that no credential for it exists here. Items 1 and 2 of "What
+Dovy has to do" above are done by these decisions; item 3 (expose the
+`campaign` schema in PostgREST) still stands. This repo has no `.env.example`;
+the Config nodes are its equivalent.
+
+**Verification after the changes:** `node tools/validate.mjs` 6 files, 157
+nodes, 0 errors, 0 warnings. `node tools/validate-selftest.mjs` 16 passed, 0
+failed. `node test/run-code-nodes.mjs` 135 passed, 0 failed. Every export still
+has `active: false` and no top-level `id`. No secret-shaped string was added;
+the self-test's fake Stripe key is still assembled at runtime from two halves.

@@ -47,6 +47,9 @@ const CASES = [
   ['the forbidden project ref is caught', w => {
     w.nodes[1].parameters.url_for_test = 'https://kngcxwcybozgqgnoweyt.supabase.co/rest/v1/';
   }, 'forbidden product project'],
+  ['a superseded reply sentiment is caught', w => {
+    w.nodes[2].parameters.note_for_test = "reply_sentiment: 'hot_pain'";
+  }, 'superseded reply sentiment'],
   ['an unreachable node is caught', w => {
     delete w.connections['Config'];
   }, 'unreachable from any trigger'],

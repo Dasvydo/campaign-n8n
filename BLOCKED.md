@@ -7,41 +7,36 @@ Ordered roughly by how much it costs if it is ignored.
 
 ---
 
-## F-5. The ROI figures are UNVERIFIED, so WF-C2's email 2 ships without them
+## F-5. RESOLVED 2026-09-06. The ROI figures are modelled, and email 2 now says so
 
-**Missing:** an answer to one question. Were the ROI figures (~9x ROI, ~EUR 400
-a month saved, ~40 day payback) ever measured against a real customer?
+**Was missing:** an answer to one question. Were the ROI figures (~9x ROI,
+~EUR 400 a month saved, ~40 day payback) ever measured against a real customer?
 
-**The contradiction, in Dovy's own files:**
+**The answer (Dovy, 2026-09-06, campaign-wide):** no. They are **modelled, not
+measured**. They come from a model that assumes an amount of time saved per seat
+and costs it at a salary. No customer has been measured. The same decision is
+recorded in `ad-engine/claims/evidence.json` under `roi_model`, which allows the
+figures only when the same copy calls them a model or a worked example and not a
+measurement.
 
-- `campaign-specs/00-START-HERE.md` lists them under **"Proof available"** as
-  "verified ROI figures".
-- `ad-engine/claims/evidence.json` says "DoviLoop currently has no customers, no
-  case studies and no measured outcomes", marks `hours_saved`, `customer_count`
-  and `percentage_claim` as `UNVERIFIED`, and notes that a measurable public
-  claim with nothing behind it "is the exposure an investor specifically warned
-  about".
+**What changed:** the `ROI_BLOCK` slot in WF-C2's "Build the three emails" node
+is filled. Email 2 now carries the three figures as a worked example: the
+assumed 10 hours a month, costed at a mid level salary of about 40 EUR an hour,
+giving about 400 EUR a month per seat, about 9x on the seat cost, and about 40
+days to pay back the 500 dollar setup fee plus the first month of seats. The
+same paragraph says "a model, not a customer result" and "Nothing has been
+measured against a real firm yet", and the paragraph after it still says plainly
+that no customer numbers exist. `test/run-code-nodes.mjs` now asserts the
+figures are present, the arithmetic is shown, and the framing sits in the same
+paragraph, and asserts that no measurement or customer is claimed.
 
-**What Batch F did:** WF-C2's email 2 is written to work without the figures. It
-explains the mechanism instead of the payoff, because the mechanism is the part
-that is verifiable today, and it says plainly "we do not have a customer yet
-whose numbers I can show you. When we do, I will send them rather than an
-estimate." A clearly marked, commented, empty `ROI_BLOCK` slot sits in the node
-source ready to be filled.
-
-**Why not just put the numbers in:** Batch E reached the same conclusion and
-shipped zero ROI numbers in eight statics and six copy variants. The case here
-is stronger than E's, not weaker: an ad is a claim shouted at a crowd, this is a
-named person who filled in a form, and a number in their inbox is a number they
-can hold you to.
-
-**Blocks:** nothing operationally. WF-C2 is complete and sendable as written.
-**Costs if ignored:** an unverifiable measurable claim, in writing, to a real
-person, from a company with no measured outcome.
-**Dovy: 5 minutes.** If the figures were measured, add the measurement to
-`ad-engine/claims/evidence.json` and paste the paragraph into `ROI_BLOCK` in
-WF-C2's "Build the three emails" node. If they were not, leave it empty and fix
-the landing page copy too (see the orchestrator's LAUNCH BLOCKER 1).
+**Still worth Dovy's eye:** 400 EUR a month against the 89 USD seat (about 82
+EUR) is roughly 5x, not 9x. The 9x holds against a seat near 45 EUR, which is
+where the superseded 49 USD price sat. Email 2 words the multiple as "our model
+puts the return at about 9x", matching the landing page, rather than deriving it
+from the shown division. If 9x is to stay campaign-wide, the model's base for it
+should be written down; if not, the one figure to change is in `ROI_BLOCK` and
+`campaign-site/src/content/*.ts`.
 
 ## F-4. There is no consent signal anywhere on the wire, so WF-C1 does not start the nurture
 
@@ -210,11 +205,14 @@ LinkedIn posted by hand for the two localized reels a week.
 - The instance at `viniflow-u57383.vm.elestio.app` was never contacted, per the
   spec.
 - The only Supabase credential in this container points at the **forbidden
-  product project**, confirmed for the fourth time in this campaign.
+  product project**, confirmed for the fourth time in this campaign. The
+  campaign ledger project itself is now confirmed as `oqpeebtwtikdzorgouxd`
+  (Dovy, 2026-09-06) and is pre-filled in every Config node, but no credential
+  for it exists here.
 - No Buffer, Meta, YouTube, LinkedIn, Stripe or SMTP credential exists here.
 
 **What Batch F did instead of pretending:** wrote `tools/validate.mjs`, proved
-it catches real breakage with `tools/validate-selftest.mjs` (14 deliberate
+it catches real breakage with `tools/validate-selftest.mjs` (15 deliberate
 breaks, all caught), and wrote `test/run-code-nodes.mjs`, which executes the
 actual Code node bodies read out of the exported JSON against the real sample
 payloads. 130 assertions pass. What that does and does not prove is stated

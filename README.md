@@ -85,22 +85,27 @@ Order matters only because WF-C1 is the one Batch A needs a URL from.
 In n8n: **Workflows → Import from File**, one at a time.
 
 After each import, open the **Config** node (a Set node, second from the left)
-and fill it in. **`ledger_url` ships blank on purpose**, and every workflow that
-touches the ledger runs a `Guard: ledger target` node that throws if it is blank,
-if it is not https, or if it contains the product project ref
-`kngcxwcybozgqgnoweyt`. That guard mirrors the refusal Batch B built into
-`campaign_db.py`. Do not remove it.
+and fill it in. **`ledger_url` ships as `https://oqpeebtwtikdzorgouxd.supabase.co`**,
+the campaign ledger project, confirmed by Dovy on 2026-09-06 (schema
+`campaign`; the credential in `CREDENTIALS.md` §1 points at the same project).
+Every workflow that touches the ledger still runs a `Guard: ledger target` node
+that throws if the URL is blank, if it is not https, or if it contains the
+product project ref `kngcxwcybozgqgnoweyt`. That guard mirrors the refusal
+Batch B built into `campaign_db.py`. Do not remove it.
 
 ### Config values, per workflow
 
 | Workflow | Must fill before it works |
 |---|---|
-| C1 | `ledger_url`, `dovy_email`, `from_email`, `data_dir` |
-| C2 | `ledger_url`, `unsubscribe_base` (C2's own production webhook URL), `postal_address`, `from_email` |
-| C3 | `ledger_url`, `publisher`, `buffer_channels` **or** `ig_user_id` + `fb_page_id`, `asset_base_url` |
-| C4 | `ledger_url`, `ig_user_id`, `fb_page_id`, `approve_base` (C4's own approve webhook URL), `keywords` |
-| C5 | `ledger_url`, `price_seat_monthly`, `price_setup_once`, `success_url`, `cancel_url`, and eventually `usd_eur_rate` |
-| C6 | `ledger_url`, `ledger_repo`, `ad_engine_repo`, `python_bin` |
+| C1 | `dovy_email`, `from_email`, `data_dir` |
+| C2 | `unsubscribe_base` (C2's own production webhook URL), `postal_address`, `from_email` |
+| C3 | `publisher`, `buffer_channels` **or** `ig_user_id` + `fb_page_id`, `asset_base_url` |
+| C4 | `ig_user_id`, `fb_page_id`, `approve_base` (C4's own approve webhook URL), `keywords` |
+| C5 | `price_seat_monthly` (the 89 USD per seat per month Price), `price_setup_once` (the 500 USD one-off Price), `success_url`, `cancel_url`, and eventually `usd_eur_rate` |
+| C6 | `ledger_repo`, `ad_engine_repo`, `python_bin` |
+
+`ledger_url` is pre-filled in all six with the confirmed campaign project and
+only needs changing if the ledger ever moves.
 
 `unsubscribe_base` and `approve_base` are chicken-and-egg: import the workflow,
 copy its production webhook URL out of the webhook node, paste it back into the
@@ -234,6 +239,13 @@ this into the ledger.
 
 ## What WF-C5 can and cannot do
 
+The offer it prices is **500 USD one-off setup plus 89 USD per seat per month**
+(confirmed 2026-09-06). The Checkout Session carries two line items: the
+`price_seat_monthly` Price times `seats`, and the `price_setup_once` Price once.
+The amounts live on the Stripe Prices, not in the workflow; the only numbers in
+the workflow itself are the `89` in the MRR arithmetic and the wording of the
+email to Dovy, and both say 89 and 500.
+
 It can create a Stripe Checkout Session and email the link **to Dovy**. It
 cannot charge anything. Four independent reasons, not one:
 
@@ -269,6 +281,15 @@ before the send call, the rate limit is stamped at the same moment, the limit is
 re-checked at redemption as well as at match time, and Meta itself allows only
 one private reply per comment.
 
+The touch WF-C4 journals after a sent DM carries **no reply sentiment**
+(`reply_sentiment: null`): it is the DM going out, not a reply coming in. If a
+reply is ever classified and written back, the only legal values are the
+ledger's `campaign.reply_sentiment` enum: `interested`, `not_now`, `not_a_fit`,
+`referred`, `objection`, `unsubscribe` (decided 2026-09-06). WF-C6 does not
+classify anything either; it renders whatever `friday_brief.py` prints, and that
+script reads the same enum, so the brief uses the new values without any change
+here.
+
 ---
 
 ## Test plan
@@ -279,7 +300,7 @@ Nothing here needs a real credential. Run these in order.
 
 ```bash
 node tools/validate.mjs           # all six files
-node tools/validate-selftest.mjs  # breaks a real export 14 ways, asserts each is caught
+node tools/validate-selftest.mjs  # breaks a real export 15 ways, asserts each is caught
 ```
 
 `validate.mjs` checks: valid JSON; `active` is exactly false; no top-level `id`;
@@ -288,7 +309,10 @@ parameters object; every connection target exists; no node is unreachable from a
 trigger; every workflow has a trigger; merge nodes declare enough inputs; every
 credential reference carries only `{id, name}`; no JWT, Stripe key, Meta token,
 Google API key or private key appears anywhere; the forbidden project ref appears
-nowhere.
+nowhere; none of the superseded reply sentiment values (`hot_pain`, `curious`,
+`endorse`, `unrelated`, `ineligible`) appears anywhere, because the ledger enum
+is now `interested, not_now, not_a_fit, referred, objection, unsubscribe` and
+would reject them.
 
 ### 2. Run the real node code against the real payloads (5 seconds)
 
@@ -302,7 +326,10 @@ evaluates the real IF-node condition strings, so the routing tested is the
 routing that ships. It proves, among other things: a malformed payload is
 rejected but preserved whole; the dedupe key comes from the header when present
 and the derived key when not; a `too_small` lead is parked; Denmark cannot be
-emailed without two confirmations; email 2 carries no ROI figure; the direct
+emailed without two confirmations; email 2 carries the three ROI figures and, in
+the same paragraph, the arithmetic behind them and the words "a model, not a
+customer result" (decision of 2026-09-06); WF-C4's journal line carries no reply
+sentiment and no workflow names a superseded sentiment value; the direct
 path routes all four channels correctly without Buffer; a Buffer error at HTTP
 200 is a failure; the Stripe link only ever goes to Dovy.
 
@@ -443,5 +470,6 @@ over the JSON and treat the builder as stale — say so in a commit message.
 - `BLOCKED.md` — twelve items, what each blocks, what it costs
 - `CREDENTIALS.md` — seven credentials, where each comes from
 - `RUN-REPORT.md` — what shipped, what did not, and what Dovy has to do
-- `sql/004_consent.sql` — a proposed migration for the four missing columns.
-  **Not run. Not applied.** Dovy runs migrations, not n8n.
+- `sql/004_consent.sql` — a proposed migration for the four missing columns,
+  targeting the `campaign` schema of the confirmed ledger project
+  `oqpeebtwtikdzorgouxd`. **Not run. Not applied.** Dovy runs migrations, not n8n.

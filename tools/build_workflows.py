@@ -201,8 +201,8 @@ for (const item of $input.all()) {
   if (!url) {
     throw new Error(
       'Config.ledger_url is blank. Open the Config node and paste the CAMPAIGN ' +
-      'ledger project URL (the lead-pipeline project, schema "campaign"). It ships ' +
-      'blank on purpose so an unreviewed import cannot reach any database.');
+      'ledger project URL (https://oqpeebtwtikdzorgouxd.supabase.co, schema ' +
+      '"campaign", confirmed 2026-09-06). Refusing to run against nothing.');
   }
   if (url.includes(FORBIDDEN)) {
     throw new Error(
@@ -283,7 +283,7 @@ def append_file(path_expr):
 
 C1_CONFIG = (
     "={{ {\n"
-    "  ledger_url: '',\n"
+    "  ledger_url: 'https://oqpeebtwtikdzorgouxd.supabase.co',\n"
     "  dovy_email: 'hello@doviloop.dev',\n"
     "  from_email: 'campaign-bot@doviloop.dev',\n"
     "  data_dir: '/home/node/.n8n/campaign',\n"
@@ -718,8 +718,8 @@ def build_c1():
         note="Production URL goes into Batch A's VITE_LEAD_WEBHOOK_URL.")
 
     w.node("Config", "n8n-nodes-base.set", 3.4, (20, 0), cfg_assignment(C1_CONFIG),
-           note="ledger_url ships BLANK on purpose. Fill it with the CAMPAIGN "
-                "project URL, never the product one.")
+           note="ledger_url is the CAMPAIGN ledger project oqpeebtwtikdzorgouxd, "
+                "confirmed by Dovy on 2026-09-06. Never the product project.")
     w.node("Validate and route", "n8n-nodes-base.code", 2, (240, 0), code(C1_VALIDATE_JS))
     w.node("IF payload valid", "n8n-nodes-base.if", 2, (460, 0), if_bool("={{ $json.ok }}"))
 
@@ -845,7 +845,7 @@ def build_c1():
 
 C2_CONFIG = (
     "={{ {\n"
-    "  ledger_url: '',\n"
+    "  ledger_url: 'https://oqpeebtwtikdzorgouxd.supabase.co',\n"
     "  dovy_email: 'hello@doviloop.dev',\n"
     "  from_email: 'dovy@doviloop.dev',\n"
     "  reply_to: 'hello@doviloop.dev',\n"
@@ -1020,44 +1020,46 @@ C2_EMAILS_JS = r"""
    are getting it and how to stop.
 
    ====================================================================
-   EMAIL 2 AND THE ROI NUMBERS. Read this before adding any figure.
+   EMAIL 2 AND THE ROI NUMBERS. Read this before touching ROI_BLOCK.
    ====================================================================
    The spec says email 2 carries "the ROI numbers": roughly 9x ROI, roughly
    EUR 400 a month saved, roughly a 40 day payback.
 
-   ad-engine/claims/evidence.json, which is Dovy's own claims ledger, says:
-   "DoviLoop currently has no customers, no case studies and no measured
-   outcomes", marks hours_saved, customer_count and percentage_claim as
-   UNVERIFIED, and notes that a measurable public claim with nothing behind it
-   "is the exposure an investor specifically warned about".
+   DECISION, Dovy, 2026-09-06 (campaign-wide, recorded in
+   ad-engine/claims/evidence.json under `roi_model`): those figures are
+   MODELLED, not measured. They are the output of a model that assumes an
+   amount of time saved per seat and costs it at a salary. No customer has
+   been measured. They may appear only when the same copy says, in plain
+   words, that they are a model or a worked example and not a measurement.
 
-   00-START-HERE.md calls the same figures verified proof. Both cannot be true.
-   Batch E resolved it by shipping zero ROI numbers in any of its eight statics
-   and six copy variants. This workflow resolves it the same way, and for a
-   stronger reason: an ad is a claim shouted at a crowd, whereas this is a
-   named person who filled in a form, and a number in their inbox is a number
-   they can hold you to.
-
-   So email 2 below is written to work WITHOUT the figures. It explains the
-   mechanism instead of the payoff, which is the part that is verifiable today.
-
-   THE SLOT: if Dovy confirms the figures were measured against a real customer,
-   set ROI_BLOCK below to the commented-out paragraph and nothing else changes.
-   Do not set it on the strength of the numbers merely having been used before.
-   Prior use of an unmeasured number is not evidence for it. Logged in
-   BLOCKED.md as F-5. */
+   So ROI_BLOCK below carries the figures as a worked example: the assumed
+   time saved, the salary it is costed at, and the arithmetic that turns one
+   into the other. It says "a model, not a customer result" in the same
+   paragraph, and the paragraph after it still says plainly that no customer
+   numbers exist yet. Do not strip the framing to make the paragraph shorter;
+   the framing is the condition the figures ship under. BLOCKED.md F-5 is
+   resolved by this decision. */
 
 // ---------------------------------------------------------------------------
-// ROI SLOT. Ships empty. Fill ONLY if ad-engine/claims/evidence.json is updated
-// to say the figures were measured against a real customer.
-//
-//   const ROI_BLOCK =
-//     '<p>On the numbers: firms like yours have seen about <b>X</b> back for ' +
-//     'every euro spent, roughly <b>EUR Y a month</b> of time returned, and ' +
-//     'payback in about <b>Z days</b>. Those come from ' +
-//     '&lt;name the measurement here&gt;.</p>';
-//
-const ROI_BLOCK = '';
+// ROI BLOCK. The three campaign figures as a worked example from assumptions,
+// per the 2026-09-06 decision. If the assumptions in the model change (hours
+// a month, cost per hour), change the arithmetic here in the same edit.
+const ROI_BLOCK =
+  '<p><b>On the numbers.</b> You may have seen three figures from us: about ' +
+  '<b>9x</b> back on the seat cost, about <b>400 EUR a month</b> saved per seat, ' +
+  'and about <b>40 days</b> to pay back the setup fee. Those are a model, not a ' +
+  'customer result, so here is the sum behind them. We assume one person spends ' +
+  'about 10 hours a month rewriting replies they have already written before, ' +
+  'and that the drafting gives most of that back. Cost 10 hours at a mid level ' +
+  'salary, call it 40 EUR an hour once you count what an hour really costs a ' +
+  'firm, and that is about 400 EUR a month per seat. Set that against what a ' +
+  'seat costs and our model puts the return at about 9x. Count the 500 dollar ' +
+  'setup fee on the team offer plus the first month of seats, and the same ' +
+  'saving pays it back in about 40 days. Every figure there is an assumption ' +
+  'times a salary. Nothing has been measured against a real firm yet. If your ' +
+  'people spend two hours a month on repeat mail instead of ten, the numbers ' +
+  'shrink to match, so do the sum with your own figures before you believe ' +
+  'ours.</p>';
 // ---------------------------------------------------------------------------
 
 function esc(s) {
@@ -1351,7 +1353,7 @@ def build_c2():
 
 C3_CONFIG = (
     "={{ {\n"
-    "  ledger_url: '',\n"
+    "  ledger_url: 'https://oqpeebtwtikdzorgouxd.supabase.co',\n"
     "  dovy_email: 'hello@doviloop.dev',\n"
     "  from_email: 'campaign-bot@doviloop.dev',\n"
     "  data_dir: '/home/node/.n8n/campaign',\n"
@@ -2070,7 +2072,7 @@ return out;
 
 C4_CONFIG = (
     "={{ {\n"
-    "  ledger_url: '',\n"
+    "  ledger_url: 'https://oqpeebtwtikdzorgouxd.supabase.co',\n"
     "  dovy_email: 'hello@doviloop.dev',\n"
     "  from_email: 'campaign-bot@doviloop.dev',\n"
     "  data_dir: '/home/node/.n8n/campaign',\n"
@@ -2354,7 +2356,12 @@ C4_LOG_TOUCH_JS = r"""
 
    So this is journalled to a file instead, in the exact shape a future insert
    would take, and the two schema gaps are named in BLOCKED.md (F-7) and
-   proposed in sql/004_consent.sql. Nothing is fabricated into the ledger. */
+   proposed in sql/004_consent.sql. Nothing is fabricated into the ledger.
+
+   Sentiment: none. This is the DM going OUT, not a reply coming in, so
+   reply_sentiment is null. Any future classifier writing a sentiment here
+   must use the ledger's six values (interested, not_now, not_a_fit,
+   referred, objection, unsubscribe) and nothing else. */
 
 const out = [];
 for (const item of $input.all()) {
@@ -2375,6 +2382,11 @@ for (const item of $input.all()) {
       message_id: sendRes.message_id || null,
       delivered: !!sendRes.ok,
       error: sendRes.error || null,
+      // A DM is an outbound touch, not a reply, so it carries no sentiment.
+      // If a reply is ever classified and written back, the only legal values
+      // are the ledger's campaign.reply_sentiment enum, decided 2026-09-06:
+      // interested, not_now, not_a_fit, referred, objection, unsubscribe.
+      reply_sentiment: null,
       not_in_campaign_touches_because: [
         'touches.contact_id is NOT NULL and needs a contacts row, which needs a companies row',
         'touch_channel enum has no instagram_dm / facebook_dm value',
@@ -2547,7 +2559,7 @@ return out;
 
 C5_CONFIG = (
     "={{ {\n"
-    "  ledger_url: '',\n"
+    "  ledger_url: 'https://oqpeebtwtikdzorgouxd.supabase.co',\n"
     "  dovy_email: 'hello@doviloop.dev',\n"
     "  from_email: 'campaign-bot@doviloop.dev',\n"
     "  data_dir: '/home/node/.n8n/campaign',\n"
@@ -3022,7 +3034,7 @@ def build_c5():
 
 C6_CONFIG = (
     "={{ {\n"
-    "  ledger_url: '',\n"
+    "  ledger_url: 'https://oqpeebtwtikdzorgouxd.supabase.co',\n"
     "  dovy_email: 'hello@doviloop.dev',\n"
     "  from_email: 'campaign-bot@doviloop.dev',\n"
     "  data_dir: '/home/node/.n8n/campaign',\n"

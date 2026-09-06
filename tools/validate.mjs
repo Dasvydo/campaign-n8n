@@ -25,6 +25,13 @@ const DIR = join(ROOT, 'workflows');
 
 const FORBIDDEN_PROJECT_REF = 'kngcxwcybozgqgnoweyt';
 
+// The reply sentiment taxonomy changed on 2026-09-06 to
+//   interested, not_now, not_a_fit, referred, objection, unsubscribe
+// (campaign-ledger/migrations/001_schema.sql, campaign.reply_sentiment).
+// The superseded values must not appear in any node, expression or payload,
+// because the ledger enum will reject them as a cast error at insert time.
+const SUPERSEDED_SENTIMENTS = /\b(hot_pain|curious|endorse|unrelated|ineligible)\b/;
+
 // Anything that looks like a live secret rather than a name.
 const SECRET_PATTERNS = [
   [/eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\./, 'a JWT'],
@@ -262,6 +269,8 @@ function checkFile(file) {
     if (s.includes(FORBIDDEN_PROJECT_REF) && !path.includes('jsCode')) {
       errors.push(`${path}: names the forbidden product project ref`);
     }
+    const m = SUPERSEDED_SENTIMENTS.exec(s);
+    if (m) errors.push(`${path}: uses superseded reply sentiment "${m[1]}"`);
   });
 
   return { file, errors, warnings, nodes: wf.nodes.length, triggers: triggers.length };

@@ -42,10 +42,10 @@ and n8n's Header Auth credential can only inject one header. The Supabase
 credential injects both, so the HTTP nodes stay simple and no key is ever typed
 into a node parameter.
 
-- **Host / URL:** the CAMPAIGN ledger project URL. Batch B's migration header
-  names `oqpeebtwtikdzorgouxd` as the intended project but says it could not be
-  confirmed from inside the build session. **Confirm it in the Supabase
-  dashboard before you paste it.**
+- **Host / URL:** `https://oqpeebtwtikdzorgouxd.supabase.co`, the CAMPAIGN
+  ledger project. **Confirmed by Dovy on 2026-09-06.** The same URL is
+  pre-filled as `ledger_url` in every Config node, and `sql/004_consent.sql`
+  targets this project's `campaign` schema.
 - **Service Role Secret:** Project Settings → API → `service_role` key.
 
 ### Two hard warnings

@@ -30,7 +30,7 @@
             {
               "id": "cfg",
               "name": "cfg",
-              "value": "={{ {\n  ledger_url: '',\n  dovy_email: 'hello@doviloop.dev',\n  from_email: 'campaign-bot@doviloop.dev',\n  data_dir: '/home/node/.n8n/campaign',\n  stripe_api: 'https://api.stripe.com/v1',\n  price_seat_monthly: '',\n  price_setup_once: '',\n  success_url: 'https://doviloop.dev/welcome',\n  cancel_url: 'https://doviloop.dev',\n  usd_eur_rate: null\n} }}",
+              "value": "={{ {\n  ledger_url: 'https://oqpeebtwtikdzorgouxd.supabase.co',\n  dovy_email: 'hello@doviloop.dev',\n  from_email: 'campaign-bot@doviloop.dev',\n  data_dir: '/home/node/.n8n/campaign',\n  stripe_api: 'https://api.stripe.com/v1',\n  price_seat_monthly: '',\n  price_setup_once: '',\n  success_url: 'https://doviloop.dev/welcome',\n  cancel_url: 'https://doviloop.dev',\n  usd_eur_rate: null\n} }}",
               "type": "object"
             }
           ]
@@ -50,7 +50,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// Refuses to run against the product database, and refuses to run unconfigured.\n//\n// This mirrors the same refusal Batch B built into campaign_db.py\n// (_FORBIDDEN_PROJECT_REF). Two independent layers now have to be defeated\n// before a campaign workflow can touch the product project by accident.\nconst FORBIDDEN = 'kngcxwcybozgqgnoweyt';\n\nconst out = [];\nfor (const item of $input.all()) {\n  const cfg = (item.json && item.json.cfg) || {};\n  const url = String(cfg.ledger_url || '').trim();\n\n  if (!url) {\n    throw new Error(\n      'Config.ledger_url is blank. Open the Config node and paste the CAMPAIGN ' +\n      'ledger project URL (the lead-pipeline project, schema \"campaign\"). It ships ' +\n      'blank on purpose so an unreviewed import cannot reach any database.');\n  }\n  if (url.includes(FORBIDDEN)) {\n    throw new Error(\n      'Config.ledger_url points at the PRODUCT database (' + FORBIDDEN + '). ' +\n      'The campaign ledger is a different project. Refusing to run.');\n  }\n  if (!/^https:\\/\\//.test(url)) {\n    throw new Error('Config.ledger_url must be https, got: ' + url);\n  }\n  out.push(item);\n}\nreturn out;\n"
+        "jsCode": "// Refuses to run against the product database, and refuses to run unconfigured.\n//\n// This mirrors the same refusal Batch B built into campaign_db.py\n// (_FORBIDDEN_PROJECT_REF). Two independent layers now have to be defeated\n// before a campaign workflow can touch the product project by accident.\nconst FORBIDDEN = 'kngcxwcybozgqgnoweyt';\n\nconst out = [];\nfor (const item of $input.all()) {\n  const cfg = (item.json && item.json.cfg) || {};\n  const url = String(cfg.ledger_url || '').trim();\n\n  if (!url) {\n    throw new Error(\n      'Config.ledger_url is blank. Open the Config node and paste the CAMPAIGN ' +\n      'ledger project URL (https://oqpeebtwtikdzorgouxd.supabase.co, schema ' +\n      '\"campaign\", confirmed 2026-09-06). Refusing to run against nothing.');\n  }\n  if (url.includes(FORBIDDEN)) {\n    throw new Error(\n      'Config.ledger_url points at the PRODUCT database (' + FORBIDDEN + '). ' +\n      'The campaign ledger is a different project. Refusing to run.');\n  }\n  if (!/^https:\\/\\//.test(url)) {\n    throw new Error('Config.ledger_url must be https, got: ' + url);\n  }\n  out.push(item);\n}\nreturn out;\n"
       },
       "id": "df270771-c491-5f2a-b7dc-e27541e1f940",
       "name": "Guard: ledger target",
@@ -439,7 +439,7 @@
             {
               "id": "cfg",
               "name": "cfg",
-              "value": "={{ {\n  ledger_url: '',\n  dovy_email: 'hello@doviloop.dev',\n  from_email: 'campaign-bot@doviloop.dev',\n  data_dir: '/home/node/.n8n/campaign',\n  stripe_api: 'https://api.stripe.com/v1',\n  price_seat_monthly: '',\n  price_setup_once: '',\n  success_url: 'https://doviloop.dev/welcome',\n  cancel_url: 'https://doviloop.dev',\n  usd_eur_rate: null\n} }}",
+              "value": "={{ {\n  ledger_url: 'https://oqpeebtwtikdzorgouxd.supabase.co',\n  dovy_email: 'hello@doviloop.dev',\n  from_email: 'campaign-bot@doviloop.dev',\n  data_dir: '/home/node/.n8n/campaign',\n  stripe_api: 'https://api.stripe.com/v1',\n  price_seat_monthly: '',\n  price_setup_once: '',\n  success_url: 'https://doviloop.dev/welcome',\n  cancel_url: 'https://doviloop.dev',\n  usd_eur_rate: null\n} }}",
               "type": "object"
             }
           ]
