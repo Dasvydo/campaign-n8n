@@ -65,19 +65,49 @@ could not see. Those come first.
 
 | ID | Task | Repo | Status | Verify |
 |---|---|---|---|---|
-| E-01 | **`creative_content_id` sends a slug into a `uuid` column.** `report/pull_ad_stats.py:191` derives `v5-pilot` from the ad name; `001_schema.sql:388` is `uuid references campaign.content(id)`. First live write fails. `campaign_db`'s docstring settles it: pass `None` rather than guess. | ad-engine | ⬜ | `python -m pytest tests/ -q` stays 89+; new case asserts `None` |
-| C-1 | **Phone-channel landing URLs attribute to `direct`, not `outreach`** — wrong funnel lane in the exact market the three-way A/B exists to compare. Append `&source=outreach` to three markdown URLs. | outreach-engine | ⬜ | 138 passed; URLs carry the override |
+| E-01 | `creative_content_id` sent a slug into a `uuid` column — first live write would have failed | ad-engine | ✅ `56c7469` | 94 passed (was 89); simulated against the real `campaign_db` signature: 8 rows, all `creative_content_id=None`, keys exactly the ledger's columns |
+| C-1 | Phone leads attributed to `direct`, not `outreach` | outreach-engine | ✅ `4a624ac` | 138 passed; ran campaign-site's real `resolveSource`: phone→`direct` before, →`outreach` after, controls unchanged |
 | M-1 | Stale hard blocker in `BLOCKED.md` C-B4 — the enum question it blocks on was settled | outreach-engine | ⬜ | entry marked resolved with evidence |
-| M-2 | `PYTHONPATH` instruction is **off by one directory** in ad-engine's `.env.example` / `BLOCKED.md` 7 | ad-engine | ⬜ | corrected path actually imports |
-| M-5 | **A live GitHub Actions cron already on `origin/main`** (`propose.yml`, Mon+Thu 09:00) that fails on its first step | reel-engine | ⬜ | either fixed or disabled, deliberately |
+| M-2 | `PYTHONPATH` instruction off by one directory | ad-engine | ✅ `bb0b453` | repo root raises `ImportError`; `/src` imports. Failure mode was silent — the shim swallows it |
+| M-5 | Live `propose.yml` cron — **claim was wrong, see below** | reel-engine | ⏸ Dovy | not a defect; the editorial gate is rejecting content |
 | A-01 | Close BLOCKED 1: the product frontend **is** here (`/home/user/flow-savvy-automations`) — same Vite+React+Tailwind family, decisively not Next.js | campaign-site | ⬜ | stack compared, entry closed |
-| C-3 | `requirements.txt` omits pytest though README tells a new machine to run it | outreach-engine | ⬜ | clean clone can run the suite |
-| C-4 | 17 of 138 tests skip silently on a clean clone; wiring one-liner undocumented | outreach-engine | ⬜ | skips explained or resolved |
+| C-3 | README told a clean machine to run pytest without installing it | outreach-engine | ✅ `1cac213` | author's runtime/dev split respected; install line now honest |
+| C-4 | Contract tests need a **sibling checkout**, not `PYTHONPATH` — and my own README said otherwise | outreach-engine | ✅ `1cac213` | 0 skips here (sibling present); 28 would skip silently without it |
 | B-01 | Point setup docs at `requirements.txt`; fix three stale statements | campaign-ledger | ⬜ | docs match reality |
 | B-02 | Close RUN-REPORT concern 1 — F already forwards `submitted_at` verbatim | campaign-ledger | ⬜ | concern marked closed |
 | F-02 | Close BLOCKED F-2 / correct AUDIT §3 — the exports are now on this branch | campaign-n8n | ⬜ | markdown only |
 | F-03 | Stale headline numbers and push status in RUN-REPORT / README / BLOCKED | campaign-n8n | ⬜ | numbers re-derived |
 | M-8 | Five of six READMEs never mention that status/decisions/setup live in `campaign-n8n/ops/` | all | ⬜ | pointer added |
+
+**M-5 was investigated and the premise was wrong.** The sweep reported a live cron
+"failing on its first step". It is not. `Require GEMINI_API_KEY` **succeeds** — the
+secret is set — and the run history is 18 runs alternating success and failure. The
+failure is at step 6, and the log says exactly why:
+
+```
+gate FAILED at the editorial layer:
+  - The 'receipt' tag represents document submissions rather than questions
+    whose answer is a database lookup, violating Rule 1.
+  - Several questions under the 'vat' tag require professional tax compliance
+    judgment rather than straightforward database lookups.
+stopping. Segment stays in the backlog.
+```
+
+That is the editorial gate **working**: refusing to publish a reel that breaks the
+content rules, twice, then stopping. Exit 1 is the correct signal and nothing here
+should be "fixed" at night.
+
+Two things are worth Dovy's attention, and both are judgement calls:
+
+1. A red X twice a week trains people to ignore Actions. There is an argument for
+   distinguishing "the gate rejected the content" from "the job broke" — but changing
+   the exit semantics of a safety gate is not a night-run edit.
+2. **The rejection may be telling him something about the segment.** The gate's
+   complaint about bookkeeping/VAT questions — that they "require professional
+   judgment rather than lookups" — is *the same test* as ICP gate G3 ("recurring
+   questions have stable, documentable answers"), which `docs/ICP-BRIEF.md` says
+   explicitly: "A segment that fails the reel gate would also fail as a customer."
+   Bookkeeping firms may be a genuinely weaker segment, not a copy problem.
 
 ### Wave 2 — pin the seams with tests
 
