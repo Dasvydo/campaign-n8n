@@ -61,7 +61,7 @@ could not see. Those come first.
 | N-11 | Ledger `PYTHONPATH` wiring documented in three engines | C, D, E | ✅ `fa75cfe` `67b0df1` `ffebe72` |
 | P-4 | Public repos + unauthenticated webhooks recorded | ops | ✅ `2443441` |
 
-### Wave 1 — the two real defects, and the stale-blocker cleanup
+### Wave 1 — the two real defects, and the stale-blocker cleanup  ·  **COMPLETE**
 
 | ID | Task | Repo | Status | Verify |
 |---|---|---|---|---|
@@ -77,7 +77,7 @@ could not see. Those come first.
 | B-02 | Close RUN-REPORT concern 1 — F already forwards `submitted_at` verbatim | campaign-ledger | ⬜ | concern marked closed |
 | F-02 | Close BLOCKED F-2 / correct AUDIT §3 — the exports are now on this branch | campaign-n8n | ⬜ | markdown only |
 | F-03 | Stale headline numbers and push status in RUN-REPORT / README / BLOCKED | campaign-n8n | ⬜ | numbers re-derived |
-| M-8 | Five of six READMEs never mention that status/decisions/setup live in `campaign-n8n/ops/` | all | ⬜ | pointer added |
+| M-8 | Five of six READMEs never mentioned `campaign-n8n/ops/` | all | ✅ `ae9c6e1` `74f59dc` `4409d1b` `c67f329` `9944578` | pointer + sibling-layout requirement in all six |
 
 **M-5 was investigated and the premise was wrong.** The sweep reported a live cron
 "failing on its first step". It is not. `Require GEMINI_API_KEY` **succeeds** — the
@@ -128,7 +128,7 @@ Two things are worth Dovy's attention, and both are judgement calls:
 | E-06 | Correct the cut-spec's stale preamble | ad-engine | ⬜ |
 | D-2 | Thread `--offline` through the Ad Library / YouTube collectors | reel-engine | ⬜ |
 | M-6 | README calls a bare `pytest -q` "the acceptance gate" though 6 tests can't pass off Windows | reel-engine | ⬜ |
-| F-01 | Write `ops/HANDOFF.md` — **last, once the table is settled** | campaign-n8n | ⬜ |
+| F-01 | Write `ops/HANDOFF.md` | campaign-n8n | ✅ |
 
 ### Deferred — needs a judgement I will not make at night
 
