@@ -56,7 +56,7 @@ Legend: ✅ done and pushed · 🔄 in progress · ⏸ parked for Dovy · ⬜ no
 | N-08 | This plan | ops | ✅ | this file |
 | N-09 | Reconstruct `campaign-specs/00-START-HERE.md` from the implementations | campaign-n8n | ⬜ | every field traceable to a cited file:line |
 | N-10 | Make C's shim-only tests skip cleanly when the real ledger is importable | outreach-engine | ⬜ | suite green both with and without `PYTHONPATH` |
-| N-11 | Document the `PYTHONPATH` ledger wiring in each engine README | C, D, E | ⬜ | rule stated in all three READMEs |
+| N-11 | Document the `PYTHONPATH` ledger wiring in each engine README | C, D, E | ✅ `fa75cfe` `67b0df1` `ffebe72` | rule stated in all three READMEs; baselines re-verified 138/28/89/8 |
 | N-12 | Morning handoff | ops | ⬜ | `ops/HANDOFF.md` |
 | P-1 | 9x vs ~5x ROI figure | site + n8n | ⏸ Dovy | see `ops/DECISIONS.md` P-1 |
 | P-2 | Nurture opt-in: `mailto:` → POST | site + n8n | ⏸ Dovy | see `ops/DECISIONS.md` P-2 |
