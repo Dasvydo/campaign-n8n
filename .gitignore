@@ -1,0 +1,33 @@
+# campaign-n8n
+#
+# This repo holds n8n workflow EXPORTS. Exports must never carry credential
+# values (tools/validate.mjs enforces that), but anything pulled back down from
+# a live instance can, so raw round-trip exports are kept out of git entirely.
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Raw exports pulled from a live n8n instance. These carry credential ids and
+# instance-specific state. Re-fetch them; never commit them.
+workflows/*.live.json
+workflows/raw/
+*.raw.json
+
+# Runtime journals the workflows append to on the n8n host
+*.jsonl
+!test/sample-payloads.json
+
+# Node / Python noise
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Editor / OS
+.DS_Store
+*.swp
+.idea/
+.vscode/
