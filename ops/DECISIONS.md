@@ -146,6 +146,71 @@ depends on a migration that only Dovy runs. It is also the one place where the c
 chose legal caution over automation — three batches reached that conclusion independently. Undoing
 that by hand at night would be wrong.
 
+### P-4 — Five of the six repos are PUBLIC, and they document unauthenticated webhooks
+
+**Found 2026-09-08 while checking whether a `campaign-specs` repo existed. Not changed — this is
+yours to decide, and it should be decided before anything is activated in n8n.**
+
+Repository visibility, from the GitHub API:
+
+| Repo | Visibility |
+|---|---|
+| campaign-site, campaign-ledger, campaign-n8n, ad-engine, outreach-engine | **public** |
+| reel-engine | private |
+
+No secret is committed anywhere — that scan is clean and was re-run on the correct branches. The
+issue is the *combination* of three public facts:
+
+1. **The n8n instance hostname** is in a public file: `campaign-n8n/README.md:342` reads
+   `N8N=https://viniflow-u57383.vm.elestio.app`. It also appears in `AUDIT.md:14` and
+   `BLOCKED.md:205`.
+2. **All eight webhook paths** are in the public workflow exports: `campaign/qualifier`,
+   `campaign/nurture-optin`, `campaign/unsubscribe`, `campaign/content-approve`,
+   `campaign/meta-comments`, `campaign/meta-dm-approve`, `campaign/stripe`.
+3. **None of the eight sets `authentication`.** Every webhook node reads
+   `authentication: NONE`.
+
+So once these workflows are activated, the full URL of every endpoint is publicly derivable, and
+each one accepts an unauthenticated POST. In rough order of how much it would cost:
+
+- **`campaign/content-approve` is the one that matters most.** `campaign-n8n/README.md` says WF-C3
+  "is the only workflow in the campaign that publishes in public, so the gate here is the one that
+  matters most", that it fails closed, and that it "only ever moves content Dovy has marked
+  approved". That approval list is written by this webhook, and the node carries no token or secret
+  check. Anyone who can reach it can mark content approved for Instagram, Facebook, YouTube Shorts
+  and LinkedIn.
+- **`campaign/meta-dm-approve`** is the same shape for outbound DMs.
+- **`campaign/qualifier`** additionally sets `allowedOrigins: "*"`, so fabricated leads can be
+  written into `campaign.leads` from any origin. Idempotency is on `natural_key`, which does not
+  help against varied input.
+- **`campaign/unsubscribe`** would let a third party suppress arbitrary addresses.
+- **`campaign/stripe`** reads the `stripe-signature` header but the check is a presence test
+  (`signature_header: !!headers['stripe-signature']`), not a cryptographic verification against the
+  `whsec_` signing secret.
+
+**Why this was not fixed autonomously.** Three reasons, any one of which is sufficient. Repository
+visibility is an outward-facing change. Adding webhook authentication means regenerating the
+workflow JSON through `tools/build_workflows.py` *and* configuring the matching credential inside
+n8n, and only you can do the second half — a change to one without the other breaks the campaign's
+one working end-to-end path. And the Stripe fix needs the real signing secret.
+
+**Options, roughly cheapest first:**
+
+1. **Make the repos private.** One setting each. It removes the discoverability, though it is
+   defence in depth rather than a fix — the endpoints remain unauthenticated.
+2. **Add n8n header auth** to the four webhooks that take instructions rather than public
+   submissions (`content-approve`, `meta-dm-approve`, `nurture-optin`, `unsubscribe`). n8n supports
+   this natively on the webhook node; it needs a matching credential created in the instance.
+3. **Verify the Stripe signature properly** in WF-C5 rather than testing for the header's presence.
+4. **Leave `campaign/qualifier` open** — it has to accept posts from the public landing page — but
+   consider a shared secret header, which `campaign-site` already demonstrates it can send: it
+   sends `X-DoviLoop-Dedupe` today.
+
+`campaign/meta-comments` legitimately must stay open and unauthenticated: Meta calls it, and it is
+verified by Meta's own challenge handshake.
+
+---
+
 ### P-3 — Where `sql/004_consent.sql` should live
 
 It is a migration for `campaign-ledger` that sits in `campaign-n8n`, because batch F may not write

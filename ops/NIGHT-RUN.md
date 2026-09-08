@@ -61,6 +61,7 @@ Legend: ✅ done and pushed · 🔄 in progress · ⏸ parked for Dovy · ⬜ no
 | P-1 | 9x vs ~5x ROI figure | site + n8n | ⏸ Dovy | see `ops/DECISIONS.md` P-1 |
 | P-2 | Nurture opt-in: `mailto:` → POST | site + n8n | ⏸ Dovy | see `ops/DECISIONS.md` P-2 |
 | P-3 | Where `sql/004_consent.sql` should live | ledger + n8n | ⏸ Dovy | see `ops/DECISIONS.md` P-3 |
+| P-4 | **5 of 6 repos are public and document 8 unauthenticated webhooks** | all | ⏸ Dovy — decide BEFORE activating n8n | see `ops/DECISIONS.md` P-4 |
 
 ---
 
