@@ -44,24 +44,97 @@ cd /home/user/reel-engine && pip install -r requirements.txt   # if working batc
 
 Legend: ✅ done and pushed · 🔄 in progress · ⏸ parked for Dovy · ⬜ not started
 
+**Scope was re-derived on 2026-09-08 by a six-agent sweep over the real batch branches.** It found
+**26 delegable tasks**, not the 3 first estimated, and — more importantly — **two genuine defects in
+the seams between batches**, which is precisely where each batch author correctly reported they
+could not see. Those come first.
+
+### Wave 0 — done tonight
+
+| ID | Task | Repo | Status |
+|---|---|---|---|
+| N-01 | Add the missing `.gitignore` | campaign-n8n | ✅ `a5cbcd5` |
+| N-02 | `requirements.txt` (sqlglot) | campaign-ledger | ✅ `850050b` |
+| N-03 | `requirements.txt` (Pillow, pytest) | ad-engine | ✅ `8906411` |
+| N-04 | All six repos onto their real batch branch, pushed | all | ✅ |
+| N-05..08 | `ops/` — corrected STATUS, NEW-PC-SETUP, DECISIONS, this plan | ops | ✅ `a2db14f` |
+| N-11 | Ledger `PYTHONPATH` wiring documented in three engines | C, D, E | ✅ `fa75cfe` `67b0df1` `ffebe72` |
+| P-4 | Public repos + unauthenticated webhooks recorded | ops | ✅ `2443441` |
+
+### Wave 1 — the two real defects, and the stale-blocker cleanup
+
 | ID | Task | Repo | Status | Verify |
 |---|---|---|---|---|
-| N-01 | Add the missing `.gitignore` | campaign-n8n | ✅ `a5cbcd5` | `git check-ignore` over tracked paths: 0 hits |
-| N-02 | `requirements.txt` (sqlglot) | campaign-ledger | ✅ `850050b` | `python3 tests/run_local_proof.py` → 46/0 |
-| N-03 | `requirements.txt` (Pillow, pytest) | ad-engine | ✅ `8906411` | `python3 -m pytest tests/ -q` → 89 passed |
-| N-04 | Move all six repos onto their real batch branch and push | all | ✅ | all six branches on GitHub |
-| N-05 | Correct `STATUS.md` — the first audit read `main` in three repos | ops | ✅ | see `ops/STATUS.md` §0 |
-| N-06 | New-PC setup guide | ops | ✅ | `ops/NEW-PC-SETUP.md` |
-| N-07 | Record autonomous decisions and parked items | ops | ✅ | `ops/DECISIONS.md` |
-| N-08 | This plan | ops | ✅ | this file |
-| N-09 | Reconstruct `campaign-specs/00-START-HERE.md` from the implementations | campaign-n8n | ⬜ | every field traceable to a cited file:line |
-| N-10 | Make C's shim-only tests skip cleanly when the real ledger is importable | outreach-engine | ⬜ | suite green both with and without `PYTHONPATH` |
-| N-11 | Document the `PYTHONPATH` ledger wiring in each engine README | C, D, E | ✅ `fa75cfe` `67b0df1` `ffebe72` | rule stated in all three READMEs; baselines re-verified 138/28/89/8 |
-| N-12 | Morning handoff | ops | ⬜ | `ops/HANDOFF.md` |
-| P-1 | 9x vs ~5x ROI figure | site + n8n | ⏸ Dovy | see `ops/DECISIONS.md` P-1 |
-| P-2 | Nurture opt-in: `mailto:` → POST | site + n8n | ⏸ Dovy | see `ops/DECISIONS.md` P-2 |
-| P-3 | Where `sql/004_consent.sql` should live | ledger + n8n | ⏸ Dovy | see `ops/DECISIONS.md` P-3 |
-| P-4 | **5 of 6 repos are public and document 8 unauthenticated webhooks** | all | ⏸ Dovy — decide BEFORE activating n8n | see `ops/DECISIONS.md` P-4 |
+| E-01 | **`creative_content_id` sends a slug into a `uuid` column.** `report/pull_ad_stats.py:191` derives `v5-pilot` from the ad name; `001_schema.sql:388` is `uuid references campaign.content(id)`. First live write fails. `campaign_db`'s docstring settles it: pass `None` rather than guess. | ad-engine | ⬜ | `python -m pytest tests/ -q` stays 89+; new case asserts `None` |
+| C-1 | **Phone-channel landing URLs attribute to `direct`, not `outreach`** — wrong funnel lane in the exact market the three-way A/B exists to compare. Append `&source=outreach` to three markdown URLs. | outreach-engine | ⬜ | 138 passed; URLs carry the override |
+| M-1 | Stale hard blocker in `BLOCKED.md` C-B4 — the enum question it blocks on was settled | outreach-engine | ⬜ | entry marked resolved with evidence |
+| M-2 | `PYTHONPATH` instruction is **off by one directory** in ad-engine's `.env.example` / `BLOCKED.md` 7 | ad-engine | ⬜ | corrected path actually imports |
+| M-5 | **A live GitHub Actions cron already on `origin/main`** (`propose.yml`, Mon+Thu 09:00) that fails on its first step | reel-engine | ⬜ | either fixed or disabled, deliberately |
+| A-01 | Close BLOCKED 1: the product frontend **is** here (`/home/user/flow-savvy-automations`) — same Vite+React+Tailwind family, decisively not Next.js | campaign-site | ⬜ | stack compared, entry closed |
+| C-3 | `requirements.txt` omits pytest though README tells a new machine to run it | outreach-engine | ⬜ | clean clone can run the suite |
+| C-4 | 17 of 138 tests skip silently on a clean clone; wiring one-liner undocumented | outreach-engine | ⬜ | skips explained or resolved |
+| B-01 | Point setup docs at `requirements.txt`; fix three stale statements | campaign-ledger | ⬜ | docs match reality |
+| B-02 | Close RUN-REPORT concern 1 — F already forwards `submitted_at` verbatim | campaign-ledger | ⬜ | concern marked closed |
+| F-02 | Close BLOCKED F-2 / correct AUDIT §3 — the exports are now on this branch | campaign-n8n | ⬜ | markdown only |
+| F-03 | Stale headline numbers and push status in RUN-REPORT / README / BLOCKED | campaign-n8n | ⬜ | numbers re-derived |
+| M-8 | Five of six READMEs never mention that status/decisions/setup live in `campaign-n8n/ops/` | all | ⬜ | pointer added |
+
+### Wave 2 — pin the seams with tests
+
+| ID | Task | Repo | Status |
+|---|---|---|---|
+| E-02 | Aggregate ad-level rows to the ledger's ad-set/day grain (silently under-reports spend otherwise) | ad-engine | ⬜ |
+| E-04 | Add `tests/test_ledger_contract.py` — the sibling test C and D both have and E does not | ad-engine | ⬜ |
+| E-05 | Test `fetch_insights` with a stubbed `urlopen` (needs no credential) | ad-engine | ⬜ |
+| M-3 | NEW test enforcing the six reply values agree across repos — nothing does today | outreach-engine | ⬜ |
+| M-4 | NEW `tools/check-sibling-invocations.mjs` — WF-C6 shells into two repos, unchecked | campaign-n8n | ⬜ |
+| F-04 | Regeneration check so "never hand-edit workflow JSON" is enforced, not just asked | campaign-n8n | ⬜ |
+| D-3 | Repair `test_a_partially_tagged_encode_is_rejected` | reel-engine | ⬜ |
+| D-5 | Test that fails when a committed render drifts from its content JSON | reel-engine | ⬜ |
+| C-2 | Contact-level fields dropped at the ledger seam, documented nowhere | outreach-engine | ⬜ |
+| A-02 | Real-browser verification pass — Chromium **is** present at `/opt/pw-browsers` | campaign-site | ⬜ |
+| A-04 | Correct stale handoff facts in README / RUN-REPORT before the new-PC clone | campaign-site | ⬜ |
+| E-03 | PostHog/pixel reconciliation against Batch A's shipped code | ad-engine | ⬜ |
+| E-06 | Correct the cut-spec's stale preamble | ad-engine | ⬜ |
+| D-2 | Thread `--offline` through the Ad Library / YouTube collectors | reel-engine | ⬜ |
+| M-6 | README calls a bare `pytest -q` "the acceptance gate" though 6 tests can't pass off Windows | reel-engine | ⬜ |
+| F-01 | Write `ops/HANDOFF.md` — **last, once the table is settled** | campaign-n8n | ⬜ |
+
+### Deferred — needs a judgement I will not make at night
+
+| ID | Task | Why |
+|---|---|---|
+| A-03 | Refresh the five objections from Batch E's research | Rewrites `src/content/{en,da,lt}.ts`. The DA/LT halves are public copy in languages nobody has reviewed. EN alone would desynchronise the three locales. |
+| D-1 | Re-render week-01 master so the endcard carries the decided price | Re-render + a fresh human eyeball pass `vet.py` cannot substitute for. |
+| D-4 | Make the reel-b golden-frame comparison platform-aware | Changes an acceptance gate. |
+| F-05 | Reconstruct the lost `00-START-HERE.md` | See below — the sweep argues the reconstruction is itself the risk. |
+
+**On F-05 / N-09.** The sweep's judgement, which I accept and which reverses my earlier plan: a
+reconstructed spec that *reads* as authoritative but was inferred from the implementations is more
+dangerous than no spec, because the next reader cannot tell which lines were decided and which were
+back-formed. The safer shape is a `ops/CONTRACTS.md` that documents the contract **as implemented**,
+cites `file:line` on both sides for every field, and says plainly that the original is lost. Recorded
+as a decision for Dovy rather than done silently.
+
+### Parked for Dovy
+
+| ID | Task | See |
+|---|---|---|
+| P-1 / F-06 | 9x vs ~5x ROI figure | `ops/DECISIONS.md` P-1 |
+| P-2 / B-07 | Nurture opt-in `mailto:` → POST, and GDPR capture fields | `ops/DECISIONS.md` P-2 |
+| P-3 | Where `sql/004_consent.sql` should live | `ops/DECISIONS.md` P-3 |
+| P-4 | **5 of 6 repos public + 8 unauthenticated webhooks — decide BEFORE activating n8n** | `ops/DECISIONS.md` P-4 |
+| B-03 | Should `campaign.leads` gain the nine columns three batches are folding into free text? | one deliberate decision, not three drive-by additions |
+| B-04 | Should `campaign_db` gain read-side lookups (`get_company` / `get_contact`)? | widens the public surface four repos import |
+| B-05 | DSD company table name + PK type, for the `dsd_company_id` FK | 5 min lookup |
+| B-06 | Currency of `pilots.mrr_eur` — named EUR, offer priced in USD | cheap now, expensive once real pilots exist |
+| E-07 | 30-day vs two-week guarantee conflict in `docs/ICP-BRIEF.md` | two vetted statics may need re-rendering |
+| E-08 | The em dash in the live `capacity.json` arm | 2 min once answered |
+| E-09 | Generative image beds for the 8 statics | costs credits, needs a human eyeball pass |
+| D-6 | Should `campaign.content` gain `week` and `segment` columns? | schema change |
+| D-7 | Write the higgsfield lane's live HTTP call | has never sent a request |
+| A-05 | Footer company legal block | only Dovy has the registered details |
+| A-06 | Native DA/LT review | a person, not a file |
 
 ---
 
