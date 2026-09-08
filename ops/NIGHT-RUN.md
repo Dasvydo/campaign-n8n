@@ -26,6 +26,17 @@ this file and continue without any conversation context.
 - After each task: commit, push, and update this file's status table in the same push.
 - If something is ambiguous, **stop and leave it for Dovy**. A parked task is a good outcome; a
   wrong guess in a live campaign is not.
+- **Never judge push state from local refs.** Ask the remote:
+  `git ls-remote origin refs/heads/claude/campaign-build-status-9j9194`, and compare to
+  `git rev-parse HEAD`. This misled two separate readings on 2026-09-08 in opposite directions.
+  First, harness-created `refs/remotes/origin/...` entries were read as proof of a push when the
+  branch did not exist on GitHub at all. Later, `reel-engine` reported "9 unpushed commits and no
+  remote branch" while the remote held exactly HEAD - its `--depth 1` clone had the single-branch
+  refspec `+refs/heads/main:refs/remotes/origin/main`, so no tracking ref was ever created.
+  Both are now repaired: every repo has the standard refspec and an upstream of
+  `origin/claude/campaign-build-status-9j9194`, reporting 0/0 and clean. If a repo ever again looks
+  ahead of a `campaign/*` branch, that is a stale upstream from a `checkout -B`, not unpushed work -
+  check the remote before pushing anything.
 
 ### Environment setup a fresh session needs
 
