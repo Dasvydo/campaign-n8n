@@ -134,15 +134,15 @@ picked up: verify the premise first, and expect roughly a third of them to disso
 | E-05 | `fetch_insights` covered — pagination, error payload, URL shape | ad-engine | ✅ `b55d98b` | 115 passed; both key assertions proved by breaking the code |
 | M-3 | Cross-repo reply-taxonomy test | outreach-engine | ⏸ Dovy | premise only half true — see below |
 | M-4 | `tools/check-sibling-invocations.mjs` — WF-C6's two cross-repo scripts are now checked | campaign-n8n | ✅ `e5078f6` |
-| F-04 | Regeneration check so "never hand-edit workflow JSON" is enforced, not just asked | campaign-n8n | ⬜ |
+| F-04 | `tools/check-regen.mjs` — the exports must be byte-identical to what `build_workflows.py` emits | campaign-n8n | ✅ `217ec35` | proved on four branches, incl. a hand-flipped `active: true`; never writes into `workflows/` |
 | D-3 | Partial-colour-tag test now exercises the check it was written for | reel-engine | ✅ `cbe0488` |
-| D-5 | Test that fails when a committed render drifts from its content JSON | reel-engine | ⬜ |
+| D-5 | `engine/provenance.py` + `tests/test_render_provenance.py` — a committed render is now pinned to its content JSON, both ways | reel-engine | ✅ `7b4ab70` | proved on the real pair: reworded the hook, the check named the file and the lane to re-run |
 | C-2 | **Premise wrong** — nothing populated is dropped. `Contact.verified` is dead code with no column; now documented | outreach-engine | ✅ `71fb4e4` |
-| A-02 | Real-browser verification pass — Chromium **is** present at `/opt/pw-browsers` | campaign-site | ⬜ |
+| A-02 | `scripts/verify-browser.py` — 15 checks in Chromium; **P-6 confirmed by measurement, not by reading code** | campaign-site | ✅ `7b82c72` | 0px overflow at 360px in all three locales; pricing scroll fires no pixel call at all |
 | A-04 | Assertion count (88, not '60-odd') and push status corrected | campaign-site | ✅ `8865769` |
 | E-03 | Pixel mapping reconciled — **found an audience that can never populate** | ad-engine | ✅ `59848d3` | table now matches shipped names; two functional gaps recorded as P-6 |
 | E-06 | Cut-spec **executed** against a real master; two wrong assumptions corrected | ad-engine | ✅ `06fa895` |
-| D-2 | Thread `--offline` through the Ad Library / YouTube collectors | reel-engine | ⬜ |
+| D-2 | `--offline` now reaches all three sources — **and BLOCKED.md item 1's ten-minute unblock did not work until it did** | reel-engine | ✅ `5e79bee` | offline runs no longer hit Meta, nor spend YouTube quota when a key is exported |
 | M-6 | Acceptance gate's real cost and its five red tests documented | reel-engine | ✅ `e691f1c` | 14m03s / 655 passed vs 1m51s / 646; no Windows dependence found |
 | F-01 | Write `ops/HANDOFF.md` | campaign-n8n | ✅ |
 

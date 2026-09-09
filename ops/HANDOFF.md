@@ -1,7 +1,7 @@
 # Handoff — morning of 2026-09-09
 
-Written at the end of the 2026-09-08 night run. Everything below is pushed to
-`claude/campaign-build-status-9j9194` in all six repos.
+Written at the end of the 2026-09-08 night run and finished the following morning, once wave 2
+closed. Everything below is pushed to `claude/campaign-build-status-9j9194` in all six repos.
 
 ---
 
@@ -104,10 +104,12 @@ Two traps documented in the engine READMEs:
 | campaign-n8n | `node tools/validate-selftest.mjs` | **16 passed, 0 failed** |
 | campaign-n8n | `node test/run-code-nodes.mjs` | **135 passed, 0 failed** |
 | campaign-n8n | `node tools/check-sibling-invocations.mjs` | **2 verified** (new) |
+| campaign-n8n | `node tools/check-regen.mjs` | **6 exports match the builder** (new) |
 | campaign-site | `npm ci && npm run build && npm run verify:payload` | build clean, **88 assertions pass** |
+| campaign-site | `python3 scripts/verify-browser.py` | **15 checks pass in Chromium** (new) |
 
-`reel-engine` is **655 passed, 5 failed** on a bare `pytest -q` (14m 03s), or 646 passed on the
-fast tier (`-m "not slow and not network"`, 1m 51s). The five failures are all
+`reel-engine` is **655 passed, 5 failed** on a bare `pytest -q` (14m 03s), or **663** passed on the
+fast tier after the two additions below (646 before them) (`-m "not slow and not network"`, 1m 51s). The five failures are all
 `test_golden_reel_b`'s byte-identical frame comparison, differing by **0.030 to 0.332 out of 255** —
 a renderer version wobble, not a creative change. That is decision **P-5**.
 
@@ -162,12 +164,47 @@ Full commands and expected outputs in `ops/NEW-PC-SETUP.md` §4.
 
 ---
 
+## What wave 2 added, after the first draft of this handoff
+
+Four more, all pushed. None of them changes what the campaign does; each closes a way for it to
+go wrong quietly.
+
+**A Meta audience that cannot populate is no longer an inference** (`campaign-site` `7b82c72`).
+`scripts/verify-browser.py` builds the site with a placeholder pixel id, blocks every Meta and
+PostHog request at the route level, and reads `window.fbq.queue` — a complete record of every call
+the page makes. Scrolling the pricing band into view produces **no pixel call at all**, and the
+submit sends `["track", "Lead", null]`. Both halves of **P-6 are now measured**, and the check was
+itself proved by injecting the event it forbids and watching it fail. The same pass settles the
+oldest open item in `campaign-site/RUN-REPORT.md` section 7: **0px horizontal overflow at 360x800
+in all three locales**, and all six form fields at 16px or more, so iOS will not zoom the form.
+Batch C's phone-attribution fix is confirmed end to end too — a `utm_source=phone` visit arrives at
+the webhook as `source: "outreach"`.
+
+**"Never hand-edit a workflow export" is now enforced** (`campaign-n8n` `217ec35`). It was a
+request in prose and nothing checked it: `validate.mjs`, the self-test and the node harness all
+read the committed JSON, so a structurally valid hand-edit passed every check while diverging from
+the builder that is supposed to produce it — and the next rebuild would wipe it. `check-regen.mjs`
+regenerates into a scratch tree and compares byte for byte. Proved on a hand-flipped
+`"active": true`, the one edit `AUDIT.md` §3 relies on nobody making.
+
+**A committed render is now bound to the content JSON it came from** (`reel-engine` `7b4ab70`).
+Nothing connected them: the manifest listed both as artifacts of the same lane and said nothing
+about one being made from the other, so editing the JSON afterwards left a publish-ready MP4
+showing text the repo no longer contains, with 655 tests green. Pinned both ways — an edited script
+and a replaced MP4 fail differently and each names its own fix.
+
+**`--offline` now means offline** (`reel-engine` `5e79bee`). The flag reached the page collector
+only, so every offline run still made four requests to Meta, and on a machine with a real
+`YOUTUBE_API_KEY` exported it spent YouTube quota. The larger consequence: **`BLOCKED.md` item 1's
+ten-minute unblock did not work as written** — it tells you to save the Ad Library pages into
+`swipe/fixtures/` and rerun offline, and an offline run ignored those files entirely. It works now.
+
 ## What is still open in the plan
 
-`ops/NIGHT-RUN.md` carries the full table. Wave 1 is complete. Wave 2 — mostly tests that pin the
-seams, plus a few documentation corrections — is unstarted, and none of it blocks going live. The
-deferred items (objection copy refresh, the week-01 re-render, the golden-frame comparison, and
-whether to write `ops/CONTRACTS.md`) all need a judgement rather than an hour.
+`ops/NIGHT-RUN.md` carries the full table, and **every row is now ✅ or ⏸** — nothing is unstarted.
+What remains parked needs a judgement rather than an hour: the objection copy refresh (DA/LT), the
+week-01 re-render, the golden-frame comparison (**P-5**), whether to write `ops/CONTRACTS.md`, and
+**M-3**, whose premise turned out to be half true and is argued out in `NIGHT-RUN.md`.
 
 One reversal worth flagging: the plan originally said to reconstruct the lost
 `campaign-specs/00-START-HERE.md`. That was dropped deliberately. A reconstructed spec would read

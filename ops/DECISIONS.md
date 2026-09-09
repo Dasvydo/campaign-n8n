@@ -192,6 +192,14 @@ so it is yours.
 code. Not applied — it is a one-line change in a file `ad-engine` does not own, and it changes what
 is collected about real visitors in an EU campaign.**
 
+**Confirmed by measurement the same day, in Chromium.** `campaign-site/scripts/verify-browser.py`
+builds the site with a placeholder pixel id, blocks every Meta request at the route level and reads
+`window.fbq.queue` — a complete record of every call the page makes. Scrolling the pricing band
+into view produces **no pixel call whatsoever**, and the submit sends `["track", "Lead", null]`.
+So this is no longer inferred from source: both gaps are observed. The only `ViewContent` the site
+sends is `demo_video`, fired by playing the demo. The check that proves it was itself proved, by
+injecting a `ViewContent(content_name='pricing')` and watching it fail.
+
 **Gap 1 is the one that matters.** `campaign-site/src/LocalePage.tsx` wires
 `<Price onView={() => track('pricing_view')} />` — PostHog only, with **no `pixelTrack` call at
 all**. The single `ViewContent` the site sends carries `content_name: 'demo_video'`, from the demo
