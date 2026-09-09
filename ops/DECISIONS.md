@@ -146,6 +146,46 @@ depends on a migration that only Dovy runs. It is also the one place where the c
 chose legal caution over automation — three batches reached that conclusion independently. Undoing
 that by hand at night would be wrong.
 
+### P-5 — reel-engine's golden frames: byte-identity, or a tolerance?
+
+**Measured 2026-09-09, not decided.** `tests/test_golden_reel_b.py` renders six frames and compares
+them **byte-for-byte** against goldens captured on another machine. Five of the six differ here:
+
+| frame | mean absolute difference |
+|---|---|
+| 0 | 0.248 / 255 |
+| 243 | 0.030 / 255 |
+| 450 | 0.332 / 255 |
+| 600 | 0.127 / 255 |
+| 749 | 0.085 / 255 |
+
+That is **0.01% to 0.13%** — the signature of a browser or encoder version difference, not a
+creative change, which would differ by orders of magnitude more. Frame 360 still matches exactly.
+
+**Why it is not just "loosen it".** The byte-identity rule is load-bearing. The file's own docstring
+says *"Reproduces today's behaviour exactly" is the load-bearing claim of the Phase 2 migration.
+This is what checks it, rather than the commit message.* A tolerance weakens the thing the test
+exists to prove. The author also already built the diagnostic for this exact ambiguity — the failure
+message reports the magnitude precisely so drift can be told from regression — which suggests the
+question was foreseen and deliberately left open.
+
+**The three options, with what each costs:**
+
+1. **Re-capture the goldens** (`tools/capture_goldens.py`) on whichever machine is now canonical.
+   Cheapest, keeps byte-identity, and moves the problem to the next machine that renders them.
+2. **Add a tolerance**, e.g. fail above ~1.0/255. Makes the gate pass anywhere, at the cost of no
+   longer proving byte-exact reproduction. If you take this, the threshold should be written down
+   with the numbers above as its justification.
+3. **Leave it.** The gate stays red on any machine that did not capture the goldens, and the five
+   failures become background noise people learn to skip past — which is how a real regression gets
+   through.
+
+Given the campaign is about to go live and nobody is actively migrating reel-b's rendering, option 1
+is probably right and option 3 is the one to avoid. But it is a call about what the test is *for*,
+so it is yours.
+
+---
+
 ### P-4 — Five of the six repos are PUBLIC, and they document unauthenticated webhooks
 
 **Found 2026-09-08 while checking whether a `campaign-specs` repo existed. Not changed — this is

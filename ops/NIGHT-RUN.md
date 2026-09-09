@@ -143,7 +143,7 @@ picked up: verify the premise first, and expect roughly a third of them to disso
 | E-03 | PostHog/pixel reconciliation against Batch A's shipped code | ad-engine | ⬜ |
 | E-06 | Cut-spec **executed** against a real master; two wrong assumptions corrected | ad-engine | ✅ `06fa895` |
 | D-2 | Thread `--offline` through the Ad Library / YouTube collectors | reel-engine | ⬜ |
-| M-6 | README calls a bare `pytest -q` "the acceptance gate" though 6 tests can't pass off Windows | reel-engine | ⬜ |
+| M-6 | Acceptance gate's real cost and its five red tests documented | reel-engine | ✅ `e691f1c` | 14m03s / 655 passed vs 1m51s / 646; no Windows dependence found |
 | F-01 | Write `ops/HANDOFF.md` | campaign-n8n | ✅ |
 
 **M-3 parked, and why.** The claim was that nothing enforces the six reply values across repos.
@@ -179,7 +179,7 @@ hit rate on its *novel* claims is roughly two in three, so verify the premise be
 |---|---|---|
 | A-03 | Refresh the five objections from Batch E's research | Rewrites `src/content/{en,da,lt}.ts`. The DA/LT halves are public copy in languages nobody has reviewed. EN alone would desynchronise the three locales. |
 | D-1 | Re-render week-01 master so the endcard carries the decided price | Re-render + a fresh human eyeball pass `vet.py` cannot substitute for. |
-| D-4 | Make the reel-b golden-frame comparison platform-aware | Changes an acceptance gate. |
+| D-4 | Make the reel-b golden-frame comparison platform-aware | Changes an acceptance gate. **Now quantified — see `ops/DECISIONS.md` P-5:** all five diffs are 0.030-0.332/255, a renderer wobble. Three options costed. |
 | F-05 | Reconstruct the lost `00-START-HERE.md` | See below — the sweep argues the reconstruction is itself the risk. |
 
 **On F-05 / N-09.** The sweep's judgement, which I accept and which reverses my earlier plan: a
