@@ -78,16 +78,16 @@ could not see. Those come first.
 |---|---|---|---|---|
 | E-01 | `creative_content_id` sent a slug into a `uuid` column — first live write would have failed | ad-engine | ✅ `56c7469` | 94 passed (was 89); simulated against the real `campaign_db` signature: 8 rows, all `creative_content_id=None`, keys exactly the ledger's columns |
 | C-1 | Phone leads attributed to `direct`, not `outreach` | outreach-engine | ✅ `4a624ac` | 138 passed; ran campaign-site's real `resolveSource`: phone→`direct` before, →`outreach` after, controls unchanged |
-| M-1 | Stale hard blocker in `BLOCKED.md` C-B4 — the enum question it blocks on was settled | outreach-engine | ⬜ | entry marked resolved with evidence |
+| M-1 | C-B4 was **already resolved** in its body; only the heading read as open | outreach-engine | ✅ `c3c07ac` | ledger enum and repo YAML both carry the canonical six; 138 passed |
 | M-2 | `PYTHONPATH` instruction off by one directory | ad-engine | ✅ `bb0b453` | repo root raises `ImportError`; `/src` imports. Failure mode was silent — the shim swallows it |
 | M-5 | Live `propose.yml` cron — **claim was wrong, see below** | reel-engine | ⏸ Dovy | not a defect; the editorial gate is rejecting content |
-| A-01 | Close BLOCKED 1: the product frontend **is** here (`/home/user/flow-savvy-automations`) — same Vite+React+Tailwind family, decisively not Next.js | campaign-site | ⬜ | stack compared, entry closed |
+| A-01 | Product frontend was present all along; stack match verified | campaign-site | ✅ `ecfd165` | both Vite+React 18.3.1+Tailwind, neither Next.js; build clean, 87 assertions pass |
 | C-3 | README told a clean machine to run pytest without installing it | outreach-engine | ✅ `1cac213` | author's runtime/dev split respected; install line now honest |
 | C-4 | Contract tests need a **sibling checkout**, not `PYTHONPATH` — and my own README said otherwise | outreach-engine | ✅ `1cac213` | 0 skips here (sibling present); 28 would skip silently without it |
-| B-01 | Point setup docs at `requirements.txt`; fix three stale statements | campaign-ledger | ⬜ | docs match reality |
-| B-02 | Close RUN-REPORT concern 1 — F already forwards `submitted_at` verbatim | campaign-ledger | ⬜ | concern marked closed |
-| F-02 | Close BLOCKED F-2 / correct AUDIT §3 — the exports are now on this branch | campaign-n8n | ⬜ | markdown only |
-| F-03 | Stale headline numbers and push status in RUN-REPORT / README / BLOCKED | campaign-n8n | ⬜ | numbers re-derived |
+| B-01 | Install lines pointed at `requirements.txt` | campaign-ledger | ✅ `8bc38f3` | 46/46 |
+| B-02 | Contract concern 1 closed — checked on **both** sides | campaign-ledger | ✅ `8bc38f3` | A never regenerates `submitted_at`; F reads it verbatim; three independent guards |
+| F-02 | F-2 closed: the existing exports **were on disk**, and there is no path collision | campaign-n8n | ✅ `103d04e` | 17 exports in `flow-savvy-automations/infra/n8n/sanitized/`; zero `campaign/` hits |
+| F-03 | Self-test count (15 ways / 16 passed) and push status corrected | campaign-n8n | ✅ `b15574a` | counted from the run: 16 PASS lines |
 | M-8 | Five of six READMEs never mentioned `campaign-n8n/ops/` | all | ✅ `ae9c6e1` `74f59dc` `4409d1b` `c67f329` `9944578` | pointer + sibling-layout requirement in all six |
 
 **M-5 was investigated and the premise was wrong.** The sweep reported a live cron
@@ -119,6 +119,11 @@ Two things are worth Dovy's attention, and both are judgement calls:
    questions have stable, documentable answers"), which `docs/ICP-BRIEF.md` says
    explicitly: "A segment that fails the reel gate would also fail as a customer."
    Bookkeeping firms may be a genuinely weaker segment, not a copy problem.
+
+**Three of the sweep's novel findings did not survive verification** (M-1, M-5, and half of C-4).
+Each was checked against the code or the run history before acting, and each turned out to describe
+something already handled or working as designed. Worth remembering if the remaining `M-*` items are
+picked up: verify the premise first, and expect roughly a third of them to dissolve.
 
 ### Wave 2 — pin the seams with tests
 
