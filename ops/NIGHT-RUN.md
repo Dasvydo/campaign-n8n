@@ -140,7 +140,7 @@ picked up: verify the premise first, and expect roughly a third of them to disso
 | C-2 | **Premise wrong** — nothing populated is dropped. `Contact.verified` is dead code with no column; now documented | outreach-engine | ✅ `71fb4e4` |
 | A-02 | Real-browser verification pass — Chromium **is** present at `/opt/pw-browsers` | campaign-site | ⬜ |
 | A-04 | Assertion count (88, not '60-odd') and push status corrected | campaign-site | ✅ `8865769` |
-| E-03 | PostHog/pixel reconciliation against Batch A's shipped code | ad-engine | ⬜ |
+| E-03 | Pixel mapping reconciled — **found an audience that can never populate** | ad-engine | ✅ `59848d3` | table now matches shipped names; two functional gaps recorded as P-6 |
 | E-06 | Cut-spec **executed** against a real master; two wrong assumptions corrected | ad-engine | ✅ `06fa895` |
 | D-2 | Thread `--offline` through the Ad Library / YouTube collectors | reel-engine | ⬜ |
 | M-6 | Acceptance gate's real cost and its five red tests documented | reel-engine | ✅ `e691f1c` | 14m03s / 655 passed vs 1m51s / 646; no Windows dependence found |

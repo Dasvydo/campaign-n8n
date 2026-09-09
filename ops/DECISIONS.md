@@ -186,6 +186,47 @@ so it is yours.
 
 ---
 
+### P-6 — Two pixel events campaign-site never sends, and one Meta audience that cannot be built
+
+**Found 2026-09-09 by reconciling `ad-engine/campaigns/pixel-install.md` against Batch A's shipped
+code. Not applied — it is a one-line change in a file `ad-engine` does not own, and it changes what
+is collected about real visitors in an EU campaign.**
+
+**Gap 1 is the one that matters.** `campaign-site/src/LocalePage.tsx` wires
+`<Price onView={() => track('pricing_view')} />` — PostHog only, with **no `pixelTrack` call at
+all**. The single `ViewContent` the site sends carries `content_name: 'demo_video'`, from the demo
+video. `ad-engine/campaigns/structure.md` builds **Audience 3, "Pricing section viewers, 90 days"**,
+on `ViewContent` where `content_name` equals `pricing`, and ranks it the *highest intent pool*. It
+would have stayed permanently empty, and the failure looks like "retargeting just isn't working"
+weeks after launch.
+
+**Gap 2.** `pixelTrack('Lead')` is called with no properties, so no `content_category` carrying the
+routing outcome. The exclusion on audiences 1, 2 and 3 keys on it, as does the future `too_small`
+exclusion. PostHog still receives the routing detail on `form_submit`, so the system of record is
+intact — only Meta's audience builder is blind.
+
+**The patch, both in `campaign-site/src/LocalePage.tsx`:**
+
+```ts
+<Price c={c} onView={() => { track('pricing_view');
+  pixelTrack('ViewContent', { content_name: 'pricing' }); }} ... />
+
+pixelTrack('Lead', { content_name: 'qualifier', content_category: outcome });
+```
+
+**Why it is yours and not mine.** Adding pixel events changes what Meta is told about EU visitors.
+This campaign has already made one deliberate privacy call (P-2, the nurture opt-in), and the same
+judgement applies: more tracking is a decision, not a bug fix. It is also worth deciding *with*
+gap 2, because `content_category` would carry the routing outcome — which is business data about a
+named visit.
+
+**Nothing misfires today.** `VITE_META_PIXEL_ID` is unset, so the pixel is inert. That is precisely
+why this survived both batches' own QA: neither side could see the other, and nothing was firing.
+
+**Reverse:** the two lines above are additive; removing them restores today's behaviour exactly.
+
+---
+
 ### P-4 — Five of the six repos are PUBLIC, and they document unauthenticated webhooks
 
 **Found 2026-09-08 while checking whether a `campaign-specs` repo existed. Not changed — this is
