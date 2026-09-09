@@ -7,16 +7,20 @@ Written at the end of the 2026-09-08 night run. Everything below is pushed to
 
 ## The one-line version
 
-All six batches were already finished. The night's value was **two real defects in the seams
+All six batches were already finished. The night's value was **three real defects in the seams
 between them** — the places every batch author correctly reported they could not see — plus making
 all six reproducible from a clean clone. The campaign is roughly **half an hour of your account
-work** from being live, gated on four decisions.
+work** from being live, gated on six decisions.
+
+**If you read one thing:** `ops/DECISIONS.md` P-4 (public repos, unauthenticated webhooks) before
+you activate anything in n8n, and P-6 (a Meta audience that can never populate) before you spend an
+ad euro.
 
 ---
 
 ## What was wrong when the night started, and is now right
 
-### Two genuine defects, both verified before and after
+### Three genuine defects, all verified before and after
 
 **`ad-engine` was sending a creative slug into a `uuid` column** (`56c7469`).
 `report/pull_ad_stats.py` derived `v5-pilot` from the ad name and passed it as
@@ -26,7 +30,7 @@ write, after passing every offline test**, because the JSONL shim accepts any st
 fixture rows were affected. Batch B's own docstring settled the fix: pass `None` rather than guess.
 The label is kept as `utm_content`, shown in the dry-run table and summarised once per run.
 Verified by simulating the real `campaign_db` signature: 8 rows, all `creative_content_id=None`,
-keys exactly the ledger's eight columns. **94 tests, up from 89.**
+keys exactly the ledger's eight columns. **ad-engine is now 115 tests, up from 89.**
 
 **Phone leads were being attributed to `direct`, not `outreach`** (`4a624ac`).
 The three phone sequences link with `utm_source=phone&utm_medium=call`. `campaign-site`'s
@@ -36,6 +40,21 @@ your three-way A/B exists to compare. Cold calling would have looked like it pro
 Fixed with `&source=outreach`, the explicit override `campaign-site` already documents, so no site
 code changed. Verified by running the site's real attribution module: phone → `direct` before,
 `outreach` after, linkedin and email controls unchanged.
+
+**`ad-engine` was silently losing 39% of ad spend** (`83de131`). Meta is queried at `level=ad` —
+one row per ad per day — but `campaign.ad_stats` is unique on
+`(campaign_name, ad_set_name, captured_on)` and `snapshot_ad_stats` upserts on that key, which
+**replaces rather than sums**. Two ads in one ad set on one day collided and the second overwrote
+the first. Measured on the committed fixture: 8 ad rows collapse to 5 ad-set/days, and last-write-
+wins stored **13.97 EUR of a real 22.75**. No error, no warning — just short numbers feeding every
+cost-per-lead figure. Now summed to the ledger's grain: 22.75 in, 22.75 out, keys unique.
+
+**A Meta audience that can never populate** (`59848d3`, decision P-6). `ad-engine` builds
+Audience 3, "Pricing section viewers, 90 days" — which it ranks the *highest intent pool* — on a
+`ViewContent` carrying `content_name: 'pricing'`. `campaign-site` fires `pricing_view` to PostHog
+only, with no pixel call at all, and the one `ViewContent` it does send says `demo_video`. Left
+unpatched deliberately: it changes what Meta is told about EU visitors, so it is a decision, not a
+bug fix. The two-line patch is written out in `ops/DECISIONS.md` P-6.
 
 ### Reproducibility, which is what would have bitten you on the new PC
 
@@ -80,21 +99,23 @@ Two traps documented in the engine READMEs:
 | outreach-engine | `python3 -m pytest tests/ -q` *(PYTHONPATH unset)* | **138 passed** |
 | outreach-engine | `python3 -m pytest tests/test_ledger_contract.py -q` | **28 passed** |
 | reel-engine | `PYTHONPATH=…/src python3 -m pytest tests/test_ledger_contract.py -q` | **8 passed** |
-| ad-engine | `python3 -m pytest tests/ -q` | **94 passed** (was 89) |
+| ad-engine | `python3 -m pytest tests/ -q` | **115 passed** (was 89) |
 | campaign-n8n | `node tools/validate.mjs` | 6 files, 157 nodes, **0 errors** |
 | campaign-n8n | `node tools/validate-selftest.mjs` | **16 passed, 0 failed** |
 | campaign-n8n | `node test/run-code-nodes.mjs` | **135 passed, 0 failed** |
-| campaign-site | `npm ci && npm run build && npm run verify:payload` | build clean, **87 assertions pass** |
+| campaign-n8n | `node tools/check-sibling-invocations.mjs` | **2 verified** (new) |
+| campaign-site | `npm ci && npm run build && npm run verify:payload` | build clean, **88 assertions pass** |
 
-`reel-engine`'s render tests error in a container whose Playwright build does not match
-(`chromium_headless_shell-1234` wanted, `-1194` shipped). On your machine
-`python3 -m playwright install chromium` resolves it. **441 pass** otherwise.
+`reel-engine` is **655 passed, 5 failed** on a bare `pytest -q` (14m 03s), or 646 passed on the
+fast tier (`-m "not slow and not network"`, 1m 51s). The five failures are all
+`test_golden_reel_b`'s byte-identical frame comparison, differing by **0.030 to 0.332 out of 255** —
+a renderer version wobble, not a creative change. That is decision **P-5**.
 
 ---
 
 ## What needs you — in the order that unblocks the most
 
-### 1. Decide the four open questions
+### 1. Decide the six open questions
 
 These were deliberately not guessed. Full reasoning and options in `ops/DECISIONS.md`.
 
@@ -103,6 +124,8 @@ These were deliberately not guessed. Full reasoning and options in `ops/DECISION
 | **P-4** | **Repo visibility and webhook auth — settle this BEFORE activating n8n.** Five of six repos are public; they publish your n8n hostname and all eight webhook paths; every webhook is `authentication: NONE`. The sharpest is `campaign/content-approve`, which your own README calls the gate that matters most because it is what publishes in public — and it carries no token check. `campaign/qualifier` also sets `allowedOrigins: "*"`, and WF-C5 tests for a `stripe-signature` header's *presence*, not its validity. | Visibility is outward-facing; adding auth needs a matching credential inside n8n, and half the change breaks the one working path. |
 | **P-1** | **The 9x ROI figure.** ~400 EUR/month against an 89 USD (~82 EUR) seat is ~**4.9x**. 9x held at the withdrawn $49 rate. Live in three languages and in WF-C2's email 2. | Public marketing copy in languages nobody has reviewed. |
 | **P-2** | **Nurture opt-in.** The 1-9 opt-in is a `mailto:`, so consent never reaches n8n and WF-C2 stays manual. ~15 minutes to make it a POST, but it also needs `sql/004_consent.sql`. | Changes the shared contract and depends on a migration only you run. It is also the one place the campaign chose legal caution deliberately. |
+| **P-6** | **A Meta audience that can never populate, and `Lead` with no properties.** `campaign-site` fires `pricing_view` to PostHog only — no pixel call — so `ad-engine`'s highest-intent audience filters on an event nobody sends. Two-line patch written out; not applied because it changes what Meta is told about EU visitors. | Same class of call as P-2: more tracking is a decision, not a bug fix. |
+| **P-5** | **reel-engine's golden frames.** Five render tests fail byte-identity by 0.030–0.332/255 — a renderer wobble, not a creative change. Re-capture, add a tolerance, or leave it red. | The byte-identity rule is load-bearing for the Phase 2 migration claim; loosening it weakens what the test proves. |
 | **P-3** | **Where `sql/004_consent.sql` lives.** It is a `campaign-ledger` migration sitting in `campaign-n8n` because Batch F may not write to a sibling repo. Marked `NOT RUN. NOT APPLIED.` | Running it is your action. |
 
 ### 2. Then the account work — about half an hour
