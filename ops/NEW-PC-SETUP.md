@@ -102,7 +102,9 @@ The proof runs entirely offline against a SQLite mirror. It never connects to Su
 ```bash
 cd ~/campaign/outreach-engine
 pip install -r requirements.txt          # dnspython, PyYAML
-python3 -m pytest tests/ -q              # expect: all pass
+python3 -m pytest tests/ -q              # expect: 138 passed  (PYTHONPATH must be UNSET)
+PYTHONPATH=~/campaign/campaign-ledger/src \
+  python3 -m pytest tests/test_ledger_contract.py -q   # expect: 28 passed
 ```
 
 ### D — reel-engine
@@ -111,11 +113,20 @@ python3 -m pytest tests/ -q              # expect: all pass
 cd ~/campaign/reel-engine
 pip install -r requirements.txt          # Pillow, playwright, edge-tts, imageio-ffmpeg, google-genai
 python3 -m playwright install chromium   # needed by the render and verify tests
-python3 -m pytest -q -m "not slow and not network"   # expect: ~441 passed
+python3 -m pytest -q -m "not slow and not network"   # expect: 663 passed, 5 failed
 ```
 
 The `slow` marker renders a full 750-frame reel and takes minutes; `network` calls edge-tts and
 will fail on a rate limit. Both are excluded above on purpose.
+
+**Five failures are expected**, all `test_golden_reel_b::test_frame_is_byte_identical_to_the_golden`.
+They compare renders byte-for-byte against goldens captured on another machine and differ by
+0.030 to 0.332 out of 255 - a browser or encoder version wobble, not a creative change. That is
+decision **P-5** in `ops/DECISIONS.md`. Anything else red is real.
+
+**These numbers were re-measured 2026-09-09** and are higher than they were: C's suite grew a
+28-test ledger contract, E went 89 -> 115 when two live defects were pinned as regressions, and
+D's fast tier went 646 -> 663. If you see the older figures quoted anywhere, this table wins.
 
 > Tonight's container could not run D's render tests: its Playwright build wanted
 > `chromium_headless_shell-1234` and the image shipped `-1194`. That is an environment mismatch,
@@ -126,7 +137,7 @@ will fail on a rate limit. Both are excluded above on purpose.
 ```bash
 cd ~/campaign/ad-engine
 pip install -r requirements.txt          # Pillow (for creative/static/vet.py), pytest
-python3 -m pytest tests/ -q              # expect: 89 passed
+python3 -m pytest tests/ -q              # expect: 115 passed
 ```
 
 ### F — campaign-n8n
@@ -138,6 +149,8 @@ cd ~/campaign/campaign-n8n
 node tools/validate.mjs                  # expect: 6 files, 157 nodes, 0 errors, 0 warnings
 node tools/validate-selftest.mjs         # expect: 16 passed, 0 failed
 node test/run-code-nodes.mjs             # expect: 135 passed, 0 failed
+node tools/check-sibling-invocations.mjs # expect: all 2 verified
+node tools/check-regen.mjs               # expect: 6 exports match the builder
 ```
 
 `validate-selftest.mjs` is the one to trust: it takes the real WF-C1 export, breaks it fifteen
@@ -150,7 +163,8 @@ from one that cannot fail.
 cd ~/campaign/campaign-site
 npm install
 npm run build                            # tsc -b && vite build
-npm run verify:payload                   # boots a local mock and posts a real payload at it
+npm run verify:payload                   # expect: 88 assertions, ALL CHECKS PASSED
+python3 scripts/verify-browser.py        # optional: 15 checks in a real Chromium
 ```
 
 ---
