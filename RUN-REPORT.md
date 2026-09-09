@@ -1,6 +1,6 @@
 # RUN-REPORT — Batch F, `campaign-n8n`
 
-Branch `campaign/f-n8n`. Four commits, **nothing pushed**. No file outside
+Branch `campaign/f-n8n`. No file outside
 `/home/user/campaign-n8n` was written, moved or deleted.
 
 ---
@@ -175,12 +175,13 @@ trigger, merge nodes declaring enough inputs.
 
 Because a validator that has never failed is indistinguishable from one that
 cannot fail, `tools/validate-selftest.mjs` takes the real WF-C1 export, breaks it
-**14 ways** and asserts each is caught: `active: true`, a top-level `id`, a
+**15 ways** and asserts each is caught: `active: true`, a top-level `id`, a
 dangling connection target, a missing position, a missing parameters object, a
 duplicate node name, a duplicate node id, a credential carrying a value, a live
-Stripe key, a JWT, the forbidden project ref, an unreachable node, a workflow
-with no trigger, and unparseable JSON. **15 passed, 0 failed** (the fifteenth is
-the control: the unmodified export still passes).
+Stripe key, a JWT, the forbidden project ref, a superseded reply sentiment, an
+unreachable node, a workflow with no trigger, and unparseable JSON.
+**16 passed, 0 failed** (the sixteenth is the control: the unmodified export
+still passes). Re-run and confirmed 2026-09-08.
 
 **What it cannot check, honestly:** that a node's `typeVersion` exists on Dovy's
 n8n build; that a parameter name inside `parameters` is spelled the way that node
@@ -275,10 +276,16 @@ be used to write to the ledger, and no signing secret has to live in the export.
 And `CREDENTIALS.md` specifies a **restricted key** with exactly two permissions,
 which makes this enforced by Stripe rather than promised in a comment.
 
-### - [x] Branch `campaign/f-n8n`, nothing pushed
+### - [x] Branch `campaign/f-n8n`, nothing pushed *(true as written; superseded 2026-09-08)*
 
-Four commits. `git remote -v` is empty; no push was attempted. Every sibling repo
-is untouched.
+At the time of the batch: `git remote -v` was empty and no push was attempted.
+Every sibling repo was untouched.
+
+**Since 2026-09-08** the work is on `claude/campaign-build-status-9j9194` and is
+pushed to `github.com/Dasvydo/campaign-n8n`, on Dovy's explicit instruction. The
+`campaign/f-n8n` branch it was based on is untouched and remains the batch's own
+record. No commit count is quoted here on purpose: it goes stale on every commit,
+and `git log --oneline` is authoritative.
 
 ### Also delivered beyond the gate
 

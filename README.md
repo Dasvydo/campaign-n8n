@@ -300,7 +300,7 @@ Nothing here needs a real credential. Run these in order.
 
 ```bash
 node tools/validate.mjs           # all six files
-node tools/validate-selftest.mjs  # breaks a real export 15 ways, asserts each is caught
+node tools/validate-selftest.mjs  # breaks a real export 15 ways, asserts each is caught (16 with the control)
 ```
 
 `validate.mjs` checks: valid JSON; `active` is exactly false; no top-level `id`;
