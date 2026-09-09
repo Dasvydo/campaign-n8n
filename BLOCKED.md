@@ -146,9 +146,32 @@ happens not to. Names are `WF-C<n>`, which cannot be confused with `WF<n>`, and
 no file here can overwrite a live workflow. No fake local copy of an unseen
 workflow was created.
 
-**Still unverified:** whether any existing workflow already binds one of the
-seven `campaign/…` webhook paths this repo uses. They are listed in `README.md`.
-**Dovy: 2 minutes.** Search the existing five for `campaign/` before activating.
+**Largely verified 2026-09-08. No collision.** The DoviLoop workflow exports are
+on this filesystem after all, in the product repo, at
+`flow-savvy-automations/infra/n8n/sanitized/` (17 files). Batch F's four searches
+missed them because they looked for `WF1*`-style filenames and for a
+`doviloop`-named directory; the exports are named by n8n workflow id and the repo
+is named `flow-savvy-automations`.
+
+`grep -l "campaign/"` across all 17 returns **nothing**. Every webhook path they
+bind, in full:
+
+    delete-kb-document      demo-pre-warm         google-callback
+    google-demo-simulation  google-voice-analysis microsoft-callback
+    n8n-kb                  needs-you-redraft     popup-demo
+    team-invitation         voice-analysis
+
+None is namespaced, and none collides with any `campaign/…` path in this repo.
+The `WF-C<n>` naming scheme is likewise unused there.
+
+**What this does not prove, so still worth 30 seconds before you activate.** That
+directory is a *committed snapshot of the 16 workflows that are DoviLoop's*, and
+the product repo's own `CLAUDE.md` is explicit on two points: the instance hosts
+around 125 workflows, the rest being the DSD-* Signal Dashboard and unrelated
+personal automations; and any export is a snapshot, not deployment state, because
+anyone can edit through the n8n UI and leave no trace in git. So this rules out a
+collision with DoviLoop's own workflows, not with the whole instance. Search the
+live instance for `campaign/` once before activating WF-C1.
 
 ## F-1. The `n8n-workflow-builder` skill does not exist in this container
 

@@ -44,7 +44,17 @@ this repo are my own, stated in `README.md` under "Conventions used, and why",
 so that when Dovy diffs these against a workflow the skill produced he can see
 exactly where they differ instead of guessing. Logged as F-1 in `BLOCKED.md`.
 
-## 3. The existing workflow set (WF1, WF4, WF5, WF6, WF9) — DEFINITIVELY ABSENT
+## 3. The existing workflow set (WF1, WF4, WF5, WF6, WF9) — ABSENT AT AUDIT TIME, FOUND LATER
+
+> **Correction, 2026-09-08.** The conclusion below was right about this container
+> as it stood, and wrong as a general claim. The exports were on the filesystem
+> the whole time, in the product repo at
+> `flow-savvy-automations/infra/n8n/sanitized/` (17 files, named by n8n workflow
+> id). The searches missed them because they looked for `WF1*`-style filenames
+> and for a directory named `doviloop*`. Consequence: the webhook-path collision
+> question in `BLOCKED.md` F-2 is now answered — no collision. The reasoning that
+> followed from the absence (`WF-C<n>` naming, no top-level `id`) was sound and
+> is unaffected.
 
 Commands run:
 
