@@ -299,9 +299,20 @@ Nothing here needs a real credential. Run these in order.
 ### 1. Structural validation, and proof the validator works (30 seconds)
 
 ```bash
-node tools/validate.mjs           # all six files
-node tools/validate-selftest.mjs  # breaks a real export 15 ways, asserts each is caught (16 with the control)
+node tools/validate.mjs                     # all six files
+node tools/validate-selftest.mjs            # breaks a real export 15 ways, asserts each is caught (16 with the control)
+node tools/check-sibling-invocations.mjs    # WF-C6's two cross-repo scripts still exist
 ```
+
+`check-sibling-invocations.mjs` covers the one thing the other two structurally
+cannot: WF-C6 shells out of this repo entirely, running
+`ad-engine/report/pull_ad_stats.py` and `campaign-ledger/src/friday_brief.py` on
+the n8n host. A rename in either sibling leaves every check here green while the
+Friday brief quietly produces nothing, and the first signal is an empty brief on
+a Friday morning. It parses the paths out of the export rather than hardcoding
+them, skips loudly when the siblings are not checked out beside this repo, and
+fails if its own regex ever stops matching - a check that cannot fail being worse
+than no check.
 
 `validate.mjs` checks: valid JSON; `active` is exactly false; no top-level `id`;
 every node has a name, unique id, type, typeVersion, `[x,y]` position and a
