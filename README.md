@@ -302,6 +302,7 @@ Nothing here needs a real credential. Run these in order.
 node tools/validate.mjs                     # all six files
 node tools/validate-selftest.mjs            # breaks a real export 15 ways, asserts each is caught (16 with the control)
 node tools/check-sibling-invocations.mjs    # WF-C6's two cross-repo scripts still exist
+node tools/check-regen.mjs                  # the exports are byte-identical to what the builder emits
 ```
 
 `check-sibling-invocations.mjs` covers the one thing the other two structurally
@@ -313,6 +314,18 @@ a Friday morning. It parses the paths out of the export rather than hardcoding
 them, skips loudly when the siblings are not checked out beside this repo, and
 fails if its own regex ever stops matching - a check that cannot fail being worse
 than no check.
+
+`check-regen.mjs` covers the other thing they structurally cannot: whether the
+committed JSON is still what `tools/build_workflows.py` produces. "Never
+hand-edit an export" was a request in prose and nothing enforced it — an edit
+that happens to be structurally valid passes `validate.mjs`, the self-test and
+the node harness, because all three read the committed JSON rather than the
+source that is meant to generate it. The next rebuild then silently wipes the
+edit. It copies the builder into a scratch tree (the builder derives its output
+directory from its own `__file__`, so it writes there instead) and compares byte
+for byte; it never writes into `workflows/`, on success or on failure. It also
+fails on a file the builder emits but nobody committed, and on a file committed
+that no builder function emits.
 
 `validate.mjs` checks: valid JSON; `active` is exactly false; no top-level `id`;
 every node has a name, unique id, type, typeVersion, `[x,y]` position and a
@@ -472,8 +485,11 @@ python3 tools/build_workflows.py && node tools/validate.mjs && node test/run-cod
 
 `tools/build_workflows.py` is the source of truth for the JSON. Edit the JS node
 bodies there rather than in the exported files, or the next rebuild will
-overwrite your change. If you edit a workflow inside n8n instead, re-export it
-over the JSON and treat the builder as stale — say so in a commit message.
+overwrite your change. `node tools/check-regen.mjs` is what turns that from a
+request into a check — run it after any change under `workflows/`. If you edit a
+workflow inside n8n instead, re-export it over the JSON and treat the builder as
+stale — `check-regen.mjs` will fail until the builder catches up, which is the
+point: say so in a commit message and fix the builder.
 
 ## See also
 
