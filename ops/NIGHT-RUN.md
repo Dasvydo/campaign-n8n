@@ -129,11 +129,11 @@ picked up: verify the premise first, and expect roughly a third of them to disso
 
 | ID | Task | Repo | Status |
 |---|---|---|---|
-| E-02 | Aggregate ad-level rows to the ledger's ad-set/day grain (silently under-reports spend otherwise) | ad-engine | ⬜ |
+| E-02 | **Ad rows collided on the ledger's key — 39% of spend silently lost.** Fixed by summing to the ad-set/day grain | ad-engine | ✅ `83de131` |
 | E-04 | Add `tests/test_ledger_contract.py` — the sibling test C and D both have and E does not | ad-engine | ⬜ |
 | E-05 | Test `fetch_insights` with a stubbed `urlopen` (needs no credential) | ad-engine | ⬜ |
-| M-3 | NEW test enforcing the six reply values agree across repos — nothing does today | outreach-engine | ⬜ |
-| M-4 | NEW `tools/check-sibling-invocations.mjs` — WF-C6 shells into two repos, unchecked | campaign-n8n | ⬜ |
+| M-3 | Cross-repo reply-taxonomy test | outreach-engine | ⏸ Dovy | premise only half true — see below |
+| M-4 | `tools/check-sibling-invocations.mjs` — WF-C6's two cross-repo scripts are now checked | campaign-n8n | ✅ `e5078f6` |
 | F-04 | Regeneration check so "never hand-edit workflow JSON" is enforced, not just asked | campaign-n8n | ⬜ |
 | D-3 | Repair `test_a_partially_tagged_encode_is_rejected` | reel-engine | ⬜ |
 | D-5 | Test that fails when a committed render drifts from its content JSON | reel-engine | ⬜ |
@@ -145,6 +145,22 @@ picked up: verify the premise first, and expect roughly a third of them to disso
 | D-2 | Thread `--offline` through the Ad Library / YouTube collectors | reel-engine | ⬜ |
 | M-6 | README calls a bare `pytest -q` "the acceptance gate" though 6 tests can't pass off Windows | reel-engine | ⬜ |
 | F-01 | Write `ops/HANDOFF.md` | campaign-n8n | ✅ |
+
+**M-3 parked, and why.** The claim was that nothing enforces the six reply values across repos.
+Partly true, but the gap is smaller than it sounds and closing it costs more than it returns:
+
+- `outreach-engine/tests/test_ledger_contract.py:452-486` already binds the YAML ids, the adapter
+  tuple and the ledger's own `_SENTIMENTS` to one `CANONICAL_SENTIMENTS` constant, and rejects
+  values outside it. That is the authoritative check and it exists.
+- `campaign-n8n` guards the drift direction that actually bites — superseded values resurfacing —
+  in both `test/run-code-nodes.mjs:600` and `tools/validate.mjs:33`.
+- The six appear in `WF-C4.json` **only inside comments**, not in executable code. A positive
+  assertion there would be asserting prose.
+
+The one genuine weakness is that outreach's binding test *skips* when `campaign-ledger` is not a
+sibling. Fixing that properly means either coupling `campaign-n8n`'s deliberately self-contained
+harness to a sibling checkout, or making a skip into a failure and breaking the single-repo
+developer experience the author explicitly designed for. Both are design calls, not defect fixes.
 
 ### Deferred — needs a judgement I will not make at night
 
