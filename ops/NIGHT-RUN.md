@@ -131,17 +131,17 @@ picked up: verify the premise first, and expect roughly a third of them to disso
 |---|---|---|---|
 | E-02 | **Ad rows collided on the ledger's key — 39% of spend silently lost.** Fixed by summing to the ad-set/day grain | ad-engine | ✅ `83de131` |
 | E-04 | `tests/test_ledger_contract.py` added — both defects pinned as regressions | ad-engine | ✅ `df55c5a` |
-| E-05 | Test `fetch_insights` with a stubbed `urlopen` (needs no credential) | ad-engine | ⬜ |
+| E-05 | `fetch_insights` covered — pagination, error payload, URL shape | ad-engine | ✅ `b55d98b` | 115 passed; both key assertions proved by breaking the code |
 | M-3 | Cross-repo reply-taxonomy test | outreach-engine | ⏸ Dovy | premise only half true — see below |
 | M-4 | `tools/check-sibling-invocations.mjs` — WF-C6's two cross-repo scripts are now checked | campaign-n8n | ✅ `e5078f6` |
 | F-04 | Regeneration check so "never hand-edit workflow JSON" is enforced, not just asked | campaign-n8n | ⬜ |
 | D-3 | Partial-colour-tag test now exercises the check it was written for | reel-engine | ✅ `cbe0488` |
 | D-5 | Test that fails when a committed render drifts from its content JSON | reel-engine | ⬜ |
-| C-2 | Contact-level fields dropped at the ledger seam, documented nowhere | outreach-engine | ⬜ |
+| C-2 | **Premise wrong** — nothing populated is dropped. `Contact.verified` is dead code with no column; now documented | outreach-engine | ✅ `71fb4e4` |
 | A-02 | Real-browser verification pass — Chromium **is** present at `/opt/pw-browsers` | campaign-site | ⬜ |
-| A-04 | Correct stale handoff facts in README / RUN-REPORT before the new-PC clone | campaign-site | ⬜ |
+| A-04 | Assertion count (88, not '60-odd') and push status corrected | campaign-site | ✅ `8865769` |
 | E-03 | PostHog/pixel reconciliation against Batch A's shipped code | ad-engine | ⬜ |
-| E-06 | Correct the cut-spec's stale preamble | ad-engine | ⬜ |
+| E-06 | Cut-spec **executed** against a real master; two wrong assumptions corrected | ad-engine | ✅ `06fa895` |
 | D-2 | Thread `--offline` through the Ad Library / YouTube collectors | reel-engine | ⬜ |
 | M-6 | README calls a bare `pytest -q` "the acceptance gate" though 6 tests can't pass off Windows | reel-engine | ⬜ |
 | F-01 | Write `ops/HANDOFF.md` | campaign-n8n | ✅ |
@@ -161,6 +161,17 @@ The one genuine weakness is that outreach's binding test *skips* when `campaign-
 sibling. Fixing that properly means either coupling `campaign-n8n`'s deliberately self-contained
 harness to a sibling checkout, or making a skip into a failure and breaking the single-repo
 developer experience the author explicitly designed for. Both are design calls, not defect fixes.
+
+**E-06 found more than a stale preamble.** Running the recipe against Batch D's real master showed
+the document assumed a **30 to 60 second** master. D's are **25.0 seconds by design** —
+`reel-engine/tests/test_timing.py` asserts `frame_count == 750` at 30 fps. So a 15 second ad cut has
+only 10.0 seconds of possible start positions, and the spec's own example (`-ss 22.4 -t 15`)
+silently produces a **2.60 second** clip. Both corrected, with the arithmetic to check a window.
+
+**Four of the sweep's findings have now dissolved on verification** — M-1, M-5, half of C-4, and
+C-2. Every one described something already handled, working as designed, or not reproducing. The
+sweep was still worth running: E-01, E-02 and the M-2 path error were real and expensive. But the
+hit rate on its *novel* claims is roughly two in three, so verify the premise before acting.
 
 ### Deferred — needs a judgement I will not make at night
 
