@@ -130,12 +130,12 @@ picked up: verify the premise first, and expect roughly a third of them to disso
 | ID | Task | Repo | Status |
 |---|---|---|---|
 | E-02 | **Ad rows collided on the ledger's key — 39% of spend silently lost.** Fixed by summing to the ad-set/day grain | ad-engine | ✅ `83de131` |
-| E-04 | Add `tests/test_ledger_contract.py` — the sibling test C and D both have and E does not | ad-engine | ⬜ |
+| E-04 | `tests/test_ledger_contract.py` added — both defects pinned as regressions | ad-engine | ✅ `df55c5a` |
 | E-05 | Test `fetch_insights` with a stubbed `urlopen` (needs no credential) | ad-engine | ⬜ |
 | M-3 | Cross-repo reply-taxonomy test | outreach-engine | ⏸ Dovy | premise only half true — see below |
 | M-4 | `tools/check-sibling-invocations.mjs` — WF-C6's two cross-repo scripts are now checked | campaign-n8n | ✅ `e5078f6` |
 | F-04 | Regeneration check so "never hand-edit workflow JSON" is enforced, not just asked | campaign-n8n | ⬜ |
-| D-3 | Repair `test_a_partially_tagged_encode_is_rejected` | reel-engine | ⬜ |
+| D-3 | Partial-colour-tag test now exercises the check it was written for | reel-engine | ✅ `cbe0488` |
 | D-5 | Test that fails when a committed render drifts from its content JSON | reel-engine | ⬜ |
 | C-2 | Contact-level fields dropped at the ledger seam, documented nowhere | outreach-engine | ⬜ |
 | A-02 | Real-browser verification pass — Chromium **is** present at `/opt/pw-browsers` | campaign-site | ⬜ |
@@ -209,13 +209,24 @@ Re-establish this before and after any change. Every number was measured on 2026
 | campaign-ledger | `python3 tests/run_local_proof.py` | 46 passed, 0 failed |
 | outreach-engine | `python3 -m pytest tests/ -q` *(no PYTHONPATH)* | 138 passed, 0 failed |
 | outreach-engine | `PYTHONPATH=…/campaign-ledger/src python3 -m pytest tests/test_ledger_contract.py -q` | 28 passed |
-| reel-engine | `python3 -m pytest -q -m "not slow and not network"` | 441 passed |
+| reel-engine | `python3 -m pytest -q -m "not slow and not network"` | **646 passed, 5 failed** (see note) |
 | reel-engine | `PYTHONPATH=… python3 -m pytest tests/test_ledger_contract.py -q` | 8 passed |
-| ad-engine | `python3 -m pytest tests/ -q` | 89 passed |
+| ad-engine | `python3 -m pytest tests/ -q` | **110 passed** |
 | ad-engine | `PYTHONPATH=… python3 -m pytest tests/test_ad_stats.py -q` | 13 passed |
 | campaign-n8n | `node tools/validate.mjs` | 6 files, 157 nodes, 0 errors |
 | campaign-n8n | `node tools/validate-selftest.mjs` | 16 passed, 0 failed |
 | campaign-n8n | `node test/run-code-nodes.mjs` | 135 passed, 0 failed |
+| campaign-n8n | `node tools/check-sibling-invocations.mjs` | 2 verified |
+
+**Two baseline numbers moved, both explained.** `ad-engine` is 110 rather than 89 because E-01,
+E-02 and E-04 added 21 tests. `reel-engine` is 646 rather than 441 because the container gained a
+working Playwright browser between ticks, so the render and browser tests that previously errored
+now run — the earlier 441 was an undercount caused by the
+`chromium_headless_shell-1234` vs `-1194` mismatch, not by anything in the repo.
+
+Its **5 remaining failures are all `test_golden_reel_b.py::test_frame_is_byte_identical_to_the_golden`**,
+which is exactly the deferred D-4 item: a byte-identical frame comparison is platform-dependent, and
+making it platform-aware changes an acceptance gate. Left alone deliberately.
 
 ---
 
