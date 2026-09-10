@@ -311,8 +311,16 @@ check('NO em dash appears in any of the three emails (voice rule)',
 // carries them as a worked example and must say so in the same paragraph.
 const e2 = emails.emails.e2.html.replace(/<!--[\s\S]*?-->/g, '');
 const roiPara = (e2.match(/<p><b>On the numbers\.<\/b>[\s\S]*?<\/p>/) || [''])[0];
-check('email 2 carries all three modelled figures (9x, 400 EUR a month, 40 days)',
-  /\b9x\b/.test(roiPara) && /400 EUR a month/.test(roiPara) && /40 days/.test(roiPara));
+// The multiple is 400 EUR saved against one seat at $89/month, about 82 EUR at
+// 0.92 USD/EUR: 4.9x, stated as 5x. It read 9x until 2026-09-10, which was
+// correct at the withdrawn $49 rate and did not move when the price did. If the
+// seat price or the assumed saving changes again, recompute it here and in
+// campaign-site/src/content/{en,da,lt}.ts - this check is what catches the two
+// drifting apart.
+check('email 2 carries all three modelled figures (5x, 400 EUR a month, 40 days)',
+  /\b5x\b/.test(roiPara) && /400 EUR a month/.test(roiPara) && /40 days/.test(roiPara));
+check('and no stale 9x survives anywhere in email 2',
+  !/\b9x\b/.test(e2));
 check('and the SAME paragraph says they are a model, not a customer result',
   /a model, not a customer result/.test(roiPara) && /Nothing has been measured/.test(roiPara));
 check('and shows the arithmetic: assumed hours, costed at a salary',

@@ -1022,7 +1022,7 @@ C2_EMAILS_JS = r"""
    ====================================================================
    EMAIL 2 AND THE ROI NUMBERS. Read this before touching ROI_BLOCK.
    ====================================================================
-   The spec says email 2 carries "the ROI numbers": roughly 9x ROI, roughly
+   The spec says email 2 carries "the ROI numbers": roughly 5x ROI, roughly
    EUR 400 a month saved, roughly a 40 day payback.
 
    DECISION, Dovy, 2026-09-06 (campaign-wide, recorded in
@@ -1046,14 +1046,14 @@ C2_EMAILS_JS = r"""
 // a month, cost per hour), change the arithmetic here in the same edit.
 const ROI_BLOCK =
   '<p><b>On the numbers.</b> You may have seen three figures from us: about ' +
-  '<b>9x</b> back on the seat cost, about <b>400 EUR a month</b> saved per seat, ' +
+  '<b>5x</b> back on the seat cost, about <b>400 EUR a month</b> saved per seat, ' +
   'and about <b>40 days</b> to pay back the setup fee. Those are a model, not a ' +
   'customer result, so here is the sum behind them. We assume one person spends ' +
   'about 10 hours a month rewriting replies they have already written before, ' +
   'and that the drafting gives most of that back. Cost 10 hours at a mid level ' +
   'salary, call it 40 EUR an hour once you count what an hour really costs a ' +
   'firm, and that is about 400 EUR a month per seat. Set that against what a ' +
-  'seat costs and our model puts the return at about 9x. Count the 500 dollar ' +
+  'seat costs and our model puts the return at about 5x. Count the 500 dollar ' +
   'setup fee on the team offer plus the first month of seats, and the same ' +
   'saving pays it back in about 40 days. Every figure there is an assumption ' +
   'times a salary. Nothing has been measured against a real firm yet. If your ' +
