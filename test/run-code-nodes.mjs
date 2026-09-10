@@ -537,6 +537,15 @@ check('the DM carries the landing page with the reel\'s UTM',
 check('THE APPROVAL STEP: the DM is only drafted, and Dovy is asked',
   draft.approval_html.includes('Nothing has been sent') &&
   draft.approve_url.includes(hit.approval_token));
+check('campaign/content-approve requires header auth (P-4)', (() => {
+  const n = wf('WF-C3').nodes.find(x => x.parameters?.path === 'campaign/content-approve');
+  return n && n.parameters.authentication === 'headerAuth'
+      && n.credentials?.httpHeaderAuth?.name;
+})());
+check('campaign/qualifier is deliberately NOT header-authed: a browser posts to it', (() => {
+  const n = wf('WF-C1').nodes.find(x => x.parameters?.path === 'campaign/qualifier');
+  return n && !n.parameters.authentication;
+})());
 check('no Config key in WF-C4 can switch the approval step off',
   !wf('WF-C4').nodes.filter(n => n.type === 'n8n-nodes-base.set')
     .some(n => /require_approval|skip_approval|auto_?send|approval_?mode/i
@@ -587,6 +596,23 @@ const redeem2 = r4.run('WF-C4', 'Redeem approval token',
   [{ json: { query: { t: draft.approval_token } } }])[0].json;
 check('the SAME token cannot be used twice: nobody gets two DMs',
   redeem2.approved === false && redeem2.reasons.some(x => x.includes('already been used')));
+
+// P-4, 2026-09-10. The token used to be base64url(rateKey|comment_id|Date.now()),
+// which is an ENCODING, not a secret. comment_id and user_id are both public on
+// the comment that triggers this, and the workflow runs seconds after it is
+// posted, so the only unknown was a millisecond - a commenter could derive their
+// own approval link and send themselves the DM. These three pin the fix.
+const tokenA = r4.run('WF-C4', 'Match keyword + rate limit',
+  [{ json: { body: payloads.wf_c4_meta_comment.instagram_keyword_hit.body } }])[0]
+  .json.approval_token;
+check('two approval tokens for the SAME comment differ',
+  tokenA !== hit.approval_token, `${hit.approval_token} vs ${tokenA}`);
+check('the approval token decodes to nothing: it is random, not encoded',
+  !Buffer.from(hit.approval_token, 'base64url').toString('utf8').includes('|'));
+check('and it carries neither the comment id nor the user id',
+  !hit.approval_token.includes(String(
+    payloads.wf_c4_meta_comment.instagram_keyword_hit.body.entry?.[0]
+      ?.changes?.[0]?.value?.comment_id || 'no-comment-id')));
 
 const hit2 = r4.run('WF-C4', 'Match keyword + rate limit',
   [{ json: { body: payloads.wf_c4_meta_comment.instagram_keyword_hit.body } }])[0].json;

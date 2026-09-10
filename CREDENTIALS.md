@@ -1,6 +1,6 @@
 # CREDENTIALS
 
-Seven credentials. **None of their values exist in this repo**, in any exported
+Eight credentials. **None of their values exist in this repo**, in any exported
 JSON, or anywhere in this container. Every node references a credential by NAME
 only; n8n matches it to whatever you create with that name at import time.
 
@@ -26,6 +26,44 @@ file for JWTs, Stripe keys, Meta tokens, Google API keys and private key blocks.
 | 5 | `YouTube Data API (campaign)` | YouTube OAuth2 API | C3, C6 | YouTube Shorts publish and stats |
 | 6 | `LinkedIn (campaign posting)` | LinkedIn OAuth2 API | C3 | LinkedIn publish on the direct path |
 | 7 | `Stripe secret key (campaign)` | Header Auth | C5 | first pilot reaching day 14 |
+| 8 | `Campaign approval webhook token` | Header Auth | C3 | **activating C3 at all** |
+
+### 8. `Campaign approval webhook token` - Header Auth
+
+Added 2026-09-10 as the minimum half of decision **P-4**. It guards
+`campaign/content-approve`, the POST that makes a reel publishable - the gate
+this repo's own README calls the one that matters most, because it is what
+publishes in public. Until now it had no authentication, and this repository is
+the campaign's public face: it prints the n8n hostname and every webhook path,
+so the gate rested on the path being hard to guess. It was not.
+
+**Create it as:** Header Auth, name `Campaign approval webhook token`, header
+name `X-Campaign-Approve`, value a long random string you generate. Nothing
+needs to know the value except you and n8n.
+
+**Then approve a reel with:**
+
+```
+curl -X POST https://<your-n8n>/webhook/campaign/content-approve \
+  -H 'X-Campaign-Approve: <the value>' \
+  -H 'Content-Type: application/json' \
+  -d '{"natural_key":"...","approved_by":"dovy"}'
+```
+
+**Why the other approval webhook does NOT get one.**
+`campaign/meta-dm-approve` is a link clicked from an email, so it cannot carry a
+header - a token in the URL is the only shape that works there. It already had
+one, but the token was `base64url(rateKey|comment_id|Date.now())`, which is an
+encoding rather than a secret: both ids are public on the comment that triggers
+the workflow, and it runs seconds after the comment is posted. Anyone who
+commented could derive their own approval link. That token is now 64 hex
+characters of `crypto.randomUUID()`, and nothing is recoverable from it because
+the draft is parked against it in workflow static data. No credential needed.
+
+`campaign/qualifier` also stays open, deliberately: the public landing page
+posts to it from a browser, where a secret would not be secret. It needs its
+`allowedOrigins` narrowed from `*` to the real site origin instead - still open,
+because the campaign site has no deployed domain yet.
 
 Only 1 and 2 are needed to activate C1, C2 and C6. Everything else can wait
 until the account it belongs to exists.

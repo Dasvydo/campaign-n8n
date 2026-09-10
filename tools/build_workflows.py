@@ -112,6 +112,12 @@ CRED_META = {"httpHeaderAuth": {"name": "Meta Graph API page token"}}
 CRED_YT = {"youTubeOAuth2Api": {"name": "YouTube Data API (campaign)"}}
 CRED_LI = {"httpHeaderAuth": {"name": "LinkedIn UGC token"}}
 CRED_STRIPE = {"httpHeaderAuth": {"name": "Stripe secret key (campaign)"}}
+# P-4, 2026-09-10. The only inbound webhook a human calls by hand, and the one
+# the README calls the gate that matters most, because it is what publishes in
+# public. Header auth suits it: Dovy sends the POST, so a secret can travel with
+# it. The other approval path, campaign/meta-dm-approve, is a link clicked from
+# an email and CANNOT carry a header - it is secured by a one-shot token instead.
+CRED_APPROVE = {"httpHeaderAuth": {"name": "Campaign approval webhook token"}}
 
 
 def cfg_assignment(obj_expr: str) -> dict:
@@ -2004,9 +2010,12 @@ return out;
         "httpMethod": "POST",
         "path": "campaign/content-approve",
         "responseMode": "lastNode",
+        "authentication": "headerAuth",
         "options": {},
-    }, webhookId=nid("WF-C3", "webhook:approve"),
-        note="The ONLY way a reel becomes publishable. Fails closed without it.")
+    }, webhookId=nid("WF-C3", "webhook:approve"), credentials=CRED_APPROVE,
+        note="The ONLY way a reel becomes publishable. Fails closed without it. "
+             "Header auth (P-4): this repo is the campaign's public face and the "
+             "path is knowable, so the gate cannot rest on the path being secret.")
     w.node("Record approval", "n8n-nodes-base.code", 2, (860, 620), code(C3_APPROVE_JS))
     w.node("To file: approvals", "n8n-nodes-base.convertToFile", 1.1, (1080, 620),
            to_text_file("line", "content-approvals.jsonl"))
@@ -2141,8 +2150,17 @@ for (const item of $input.all()) {
     if (rateLimited) reasons.push('already messaged on ' + lastAt +
       ' (rate limit is ' + cfg.rate_limit_days + ' days)');
 
-    const token = Buffer.from(rateKey + '|' + (c.comment_id || '') + '|' +
-      Date.now()).toString('base64url');
+    /* An UNGUESSABLE token, not an encoded one. This used to be
+       base64url(rateKey|comment_id|Date.now()), which is an encoding rather
+       than a secret: comment_id and user_id are both public on the comment
+       that triggered this, and the workflow runs seconds after it is posted,
+       so the only unknown was a millisecond. Someone who commented could
+       derive their own approval link and send themselves the DM, defeating the
+       approval gate entirely. Nothing needs to be recoverable FROM the token -
+       the draft is parked against it in workflow static data - so it can be
+       pure randomness. (P-4, 2026-09-10.) */
+    const token = crypto.randomUUID().replace(/-/g, '') +
+      crypto.randomUUID().replace(/-/g, '');
 
     out.push({ json: {
       cfg: cfg,

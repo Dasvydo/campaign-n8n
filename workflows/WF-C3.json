@@ -886,6 +886,7 @@
         "httpMethod": "POST",
         "path": "campaign/content-approve",
         "responseMode": "lastNode",
+        "authentication": "headerAuth",
         "options": {}
       },
       "id": "d6f09626-7c53-56ec-b618-e0df01e79a60",
@@ -896,7 +897,12 @@
         640,
         620
       ],
-      "notes": "The ONLY way a reel becomes publishable. Fails closed without it.",
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Campaign approval webhook token"
+        }
+      },
+      "notes": "The ONLY way a reel becomes publishable. Fails closed without it. Header auth (P-4): this repo is the campaign's public face and the path is knowable, so the gate cannot rest on the path being secret.",
       "webhookId": "c32791e8-b049-5d72-9d33-ae1e768ab2c4"
     },
     {
