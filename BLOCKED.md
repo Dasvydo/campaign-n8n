@@ -164,14 +164,33 @@ bind, in full:
 None is namespaced, and none collides with any `campaign/…` path in this repo.
 The `WF-C<n>` naming scheme is likewise unused there.
 
-**What this does not prove, so still worth 30 seconds before you activate.** That
-directory is a *committed snapshot of the 16 workflows that are DoviLoop's*, and
-the product repo's own `CLAUDE.md` is explicit on two points: the instance hosts
-around 125 workflows, the rest being the DSD-* Signal Dashboard and unrelated
-personal automations; and any export is a snapshot, not deployment state, because
-anyone can edit through the n8n UI and leave no trace in git. So this rules out a
-collision with DoviLoop's own workflows, not with the whole instance. Search the
-live instance for `campaign/` once before activating WF-C1.
+**CLOSED 2026-09-10, against the live instance rather than a snapshot.** The
+paragraph that stood here said the committed exports rule out a collision with
+DoviLoop's own 16 workflows but not with the whole instance, and asked for 30
+seconds against the live API before activating. That has now been done, with the
+n8n API key the founder supplied:
+
+    GET /api/v1/workflows?limit=250
+    -> 125 workflows, 21 active, 47 bound webhook paths in total
+
+**Not one of them begins `campaign/`.** The full bound set is
+`approve-send`, `customer-onboarding`, `delete-kb-document`, `demo-pre-warm`,
+`demo-run`, `dsd-ingest`, `g`, `get-token`, `gg`, `google-callback`,
+`google-demo-simulation`, `google-voice-analysis`, `microsoft-callback`,
+`microsoft-callbac`, `n8n-kb`, `needs-you-redraft`, `nylas-callback`,
+`onboard-client`, `onboard-client-tokens`, `pinecone-query`, `pinecone-stats`,
+`popup-demo`, `popup-demo-multipage`, `process-document`, `rb2b-visitor`,
+`regen-notes`, `run-tier1`, `run-tier2`, `run-tier3`, `sale-intake`,
+`shazam-to-spotify`, `sp-pipeline-trigger`, `team-invitation`,
+`team-invitation..`, plus three raw-uuid paths. All eight `campaign/…` paths in
+this repo are free.
+
+**Worth knowing, and new.** The campaign will share an n8n instance with the
+LIVE PRODUCT: `viniflow-u57383` is the same host that runs WF1, WF4, WF5-v2,
+WF6, WF9 and the needs-you redraft path. Six more workflows, two of them on
+schedules, land beside automation that real customers depend on. That is not a
+reason not to do it, but it is a reason to activate them one at a time and watch
+one full run of each, exactly as the README's activation order already says.
 
 ## F-1. The `n8n-workflow-builder` skill does not exist in this container
 

@@ -138,10 +138,15 @@ Everything else can wait until the account it belongs to exists.
   and can be disabled by `NODES_EXCLUDE` on a self-hosted instance. The
   documented host is self-hosted (Elestio), so this should hold — confirm it
   before Stage 1 rather than at 16:00 on a Friday.
-- **Path collision.** `README.md` warns that five pre-existing workflows
-  (WF1, WF4, WF5, WF6, WF9) live on the same instance and this container has no
-  copy of them. Search them for `campaign/` before activating; a duplicate
-  webhook path is a live conflict (`BLOCKED.md` F-2).
+- **Path collision: CHECKED AND CLEAR, 2026-09-10.** Queried the live instance
+  directly (`GET /api/v1/workflows?limit=250`): 125 workflows, 21 active, 47
+  bound webhook paths, and **not one begins `campaign/`**. All eight paths this
+  repo needs are free. `BLOCKED.md` F-2 carries the full list. Nothing to do
+  here any more.
+- **The campaign shares its n8n instance with the live product.** Same host as
+  WF1, WF4, WF5-v2, WF6, WF9 and the needs-you redraft path. Activate one at a
+  time and watch a full run of each, per the order below - that advice was
+  already here, and this is the reason it matters.
 
 ---
 
