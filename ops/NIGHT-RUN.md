@@ -223,7 +223,7 @@ Re-establish this before and after any change. Every number was measured on 2026
 | reel-engine | `python3 -m pytest -q -m "not slow and not network"` | **646 passed, 5 failed** (see note) |
 | reel-engine | `PYTHONPATH=… python3 -m pytest tests/test_ledger_contract.py -q` | 8 passed |
 | ad-engine | `python3 -m pytest tests/ -q` | **110 passed** |
-| ad-engine | `PYTHONPATH=… python3 -m pytest tests/test_ad_stats.py -q` | 13 passed |
+| ad-engine | `python3 -m pytest tests/test_ledger_contract.py -q` | 10 passed |
 | campaign-n8n | `node tools/validate.mjs` | 6 files, 157 nodes, 0 errors |
 | campaign-n8n | `node tools/validate-selftest.mjs` | 16 passed, 0 failed |
 | campaign-n8n | `node test/run-code-nodes.mjs` | 135 passed, 0 failed |

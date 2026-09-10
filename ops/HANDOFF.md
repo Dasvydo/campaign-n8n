@@ -77,7 +77,7 @@ Batches C, D and E each `import campaign_db` and **fall back to a local JSONL sh
 absent. That is why they were buildable while B was still being written — and it means a
 misconfigured path looks exactly like success. **This was never tested end to end before tonight.**
 It works: with `campaign-ledger/src` on `PYTHONPATH`, all three switch to the real client and their
-contract suites pass against it (28 / 8 / 13). Every table in `campaign` has a writer.
+contract suites pass against it (28 / 8 / 10). Every table in `campaign` has a writer.
 
 Two traps documented in the engine READMEs:
 

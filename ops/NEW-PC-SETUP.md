@@ -252,7 +252,7 @@ The seam is proven by each engine's own contract suite, run **with** the ledger 
 ```bash
 cd ~/campaign/outreach-engine && PYTHONPATH=~/campaign/campaign-ledger/src python3 -m pytest tests/test_ledger_contract.py -q   # 28 passed
 cd ~/campaign/reel-engine     && PYTHONPATH=~/campaign/campaign-ledger/src python3 -m pytest tests/test_ledger_contract.py -q   # 8 passed
-cd ~/campaign/ad-engine       && PYTHONPATH=~/campaign/campaign-ledger/src python3 -m pytest tests/test_ad_stats.py -q          # 13 passed
+cd ~/campaign/ad-engine       && python3 -m pytest tests/test_ledger_contract.py -q                                    # 10 passed
 ```
 
 > ### ⚠ Do not set PYTHONPATH globally, then run outreach-engine's full suite
