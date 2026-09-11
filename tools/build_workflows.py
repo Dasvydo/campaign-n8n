@@ -17,6 +17,19 @@ import uuid
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 OUT = ROOT / "workflows"
 
+# The live n8n host, and the prefix n8n puts in front of every PRODUCTION
+# webhook path. Two Config fields are built from it: WF-C2's unsubscribe_base
+# and WF-C4's approve_base. Both are links that get emailed, so they cannot be
+# a relative path and n8n has no expression for "my own production URL" inside
+# a Set node -- the host has to be written down somewhere, and here is the one
+# place, so changing instance is one edit rather than two.
+#
+# NOTE the /webhook/ segment. n8n serves the TEST url at /webhook-test/<path>,
+# which only listens while the editor has "Listen for test event" open. A link
+# built on /webhook-test/ works once, for whoever is looking at the canvas, and
+# 404s for the recipient. Do not paste a URL copied from the editor's Test tab.
+N8N_WEBHOOK_BASE = "https://viniflow-u57383.vm.elestio.app/webhook"
+
 # Deterministic node IDs: same input, same file, so a rebuild is a clean diff.
 _NS = uuid.UUID("6f1a5b2c-9d3e-4a71-8c52-0e7b4d9a1f60")
 
@@ -856,7 +869,7 @@ C2_CONFIG = (
     "  from_email: 'dovy@doviloop.dev',\n"
     "  reply_to: 'hello@doviloop.dev',\n"
     "  data_dir: '/home/node/.n8n/campaign',\n"
-    "  unsubscribe_base: '',\n"
+    "  unsubscribe_base: '" + N8N_WEBHOOK_BASE + "/campaign/unsubscribe',\n"
     "  pricing_url: 'https://doviloop.dev/pricing',\n"
     "  postal_address: '',\n"
     "  dk_marketing_law_confirmed: false\n"
@@ -1237,8 +1250,9 @@ def build_c2():
              "opt-in is a mailto and never reaches this.")
 
     w.node("Config", "n8n-nodes-base.set", 3.4, (0, -50), cfg_assignment(C2_CONFIG),
-           note="unsubscribe_base and postal_address must both be filled before "
-                "this workflow is activated. See README.")
+           note="postal_address must be filled before this workflow is activated. "
+                "unsubscribe_base is built from N8N_WEBHOOK_BASE in the builder; "
+                "re-point that constant if the instance moves. See README.")
     w.node("Consent gate", "n8n-nodes-base.code", 2, (220, -50), code(C2_CONSENT_JS))
     w.node("IF consent proven", "n8n-nodes-base.if", 2, (440, -50),
            if_bool("={{ $json.consented }}"))
@@ -2091,7 +2105,7 @@ C4_CONFIG = (
     "  landing_url: 'https://teams.doviloop.dev',\n"
     "  keywords: ['draft', 'drafts', 'demo', 'outlook', 'info'],\n"
     "  rate_limit_days: 90,\n"
-    "  approve_base: ''\n"
+    "  approve_base: '" + N8N_WEBHOOK_BASE + "/campaign/meta-dm-approve'\n"
     "} }}"
 )
 

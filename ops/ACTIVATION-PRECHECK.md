@@ -227,10 +227,10 @@ No ledger credential: WF-C2 never touches Supabase.
 
 **Sibling scripts** — none.
 
-**Config fields — two blanks BLOCK activation, one gates Denmark**
+**Config fields — one blank BLOCKS activation, one gates Denmark**
 
 ```
-unsubscribe_base            ''      *** BLANK — must be filled before activating ***
+unsubscribe_base            'https://viniflow-u57383.vm.elestio.app/webhook/campaign/unsubscribe'   FILLED 2026-09-11
 postal_address              ''      *** BLANK — must be filled before activating ***
 dk_marketing_law_confirmed  false   *** gates all Danish email — see below ***
 from_email                  'dovy@doviloop.dev'      (a human wrote these; a human gets the replies)
@@ -239,11 +239,17 @@ pricing_url                 'https://doviloop.dev/pricing'
 ledger_url / dovy_email / data_dir   prefilled
 ```
 
-The Config node's own `notes` field says it outright: *"unsubscribe_base and
-postal_address must both be filled before this workflow is activated."*
-Nothing throws if they are blank — the unsubscribe URL is built by string
-concatenation, so a blank base produces a broken link in all three emails, and
-a blank postal address silently omits the postal-address block.
+`unsubscribe_base` was filled on 2026-09-11 from the `N8N_WEBHOOK_BASE`
+constant in `tools/build_workflows.py`, and verified: it resolves to
+`https://viniflow-u57383.vm.elestio.app/webhook/campaign/unsubscribe`, which is
+exactly the path of this workflow's own `Webhook — unsubscribe` node (GET).
+Re-point that constant and rebuild if the instance ever moves.
+
+**`postal_address` is still blank and still blocks activation.** Nothing
+throws — the unsubscribe URL is built by string concatenation and the postal
+block is simply omitted — so a blank address means three marketing emails go
+out without the sender's postal address, which is a legal requirement, not a
+nicety.
 
 ## `dk_marketing_law_confirmed` — the two-key gate on Danish email
 
@@ -465,7 +471,7 @@ path will run against stale values.**
 ```
 ig_user_id     ''   *** BLANK — Instagram Business Account ID ***
 fb_page_id     ''   *** BLANK ***
-approve_base   ''   *** BLANK — the approval URL in Dovy's email is built by concatenation ***
+approve_base   'https://viniflow-u57383.vm.elestio.app/webhook/campaign/meta-dm-approve'   FILLED 2026-09-11, in BOTH Config nodes
 landing_url    'https://teams.doviloop.dev'
 keywords       ['draft','drafts','demo','outlook','info']
 rate_limit_days 90
@@ -482,8 +488,14 @@ GET and the credential is the campaign one, so the blast radius is small — but
 the refusal that protects the other four is genuinely absent here.
 
 There is no path from a comment to a DM that does not pass through Dovy
-clicking the link in the approval email. A blank `approve_base` produces a
-broken link, which fails closed — no DM is sent.
+clicking the link in the approval email. `approve_base` was blank until
+2026-09-11 and is now built from `N8N_WEBHOOK_BASE` in the builder, so **both**
+Config nodes carry it and cannot drift — which is the whole reason the value
+lives in the builder rather than being pasted twice by hand. It resolves to the
+path of this workflow's own `Webhook — approve DM` node (GET).
+
+A blank `approve_base` failed closed — a broken link sends no DM. That is still
+the behaviour if the constant is ever emptied.
 
 ---
 

@@ -98,18 +98,34 @@ Batch B built into `campaign_db.py`. Do not remove it.
 | Workflow | Must fill before it works |
 |---|---|
 | C1 | `dovy_email`, `from_email`, `data_dir` |
-| C2 | `unsubscribe_base` (C2's own production webhook URL), `postal_address`, `from_email` |
+| C2 | `postal_address`, `from_email` — `unsubscribe_base` is now prefilled |
 | C3 | `publisher`, `buffer_channels` **or** `ig_user_id` + `fb_page_id`, `asset_base_url` |
-| C4 | `ig_user_id`, `fb_page_id`, `approve_base` (C4's own approve webhook URL), `keywords` |
+| C4 | `ig_user_id`, `fb_page_id`, `keywords` — `approve_base` is now prefilled |
 | C5 | `price_seat_monthly` (the 89 USD per seat per month Price), `price_setup_once` (the 500 USD one-off Price), `success_url`, `cancel_url`, and eventually `usd_eur_rate` |
 | C6 | `ledger_repo`, `ad_engine_repo`, `python_bin` |
 
 `ledger_url` is pre-filled in all six with the confirmed campaign project and
 only needs changing if the ledger ever moves.
 
-`unsubscribe_base` and `approve_base` are chicken-and-egg: import the workflow,
-copy its production webhook URL out of the webhook node, paste it back into the
-Config node of the same workflow, save.
+`unsubscribe_base` and `approve_base` **are no longer blank.** They used to be
+described here as chicken-and-egg — import, copy the production URL off the
+webhook node, paste it back — but they never were. A production webhook URL is
+`<host>/webhook/<path>`, and both halves are known before the import: the path
+is written in this repo's own exports and the host is the instance you import
+into. So both are built in `tools/build_workflows.py` from one constant:
+
+```python
+N8N_WEBHOOK_BASE = "https://viniflow-u57383.vm.elestio.app/webhook"
+```
+
+**If you import into a different instance, change that constant and rebuild** —
+do not edit the exports. It is the only place either URL is written, so WF-C4's
+two Config nodes cannot drift apart.
+
+⚠️ The editor's **Test URL** is `<host>/webhook-test/<path>` and only listens
+while "Listen for test event" is open. A link built on it works once, for
+whoever is watching the canvas, and 404s for the person who got the email.
+These two values are emailed to real recipients — they must be `/webhook/`.
 
 ## Activation order
 
