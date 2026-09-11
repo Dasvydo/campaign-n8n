@@ -133,20 +133,39 @@ credential can read the table. Treat it as a production secret.
 
 **Type:** SMTP. Used by thirteen Send nodes across all six workflows.
 
-- **Host / Port / SSL:** whatever sends mail for `doviloop.dev`. Google
-  Workspace: `smtp.gmail.com`, port 465, SSL on, and an **App Password**, not
-  the account password.
-- **User / Password:** the sending mailbox.
+**Settled 2026-09-11. The credential exists and its test is green.**
+
+- **Host / Port / SSL:** `smtp.gmail.com`, port **465**, **SSL on**, and an
+  **App Password** (Google rejects the account password on SMTP outright).
+  `doviloop.dev` is Google Workspace - `MX 1 smtp.google.com`,
+  `v=spf1 include:_spf.google.com`, checked in DNS rather than assumed.
+- **User:** `dovyvini@doviloop.dev`.
+
+If the test ever reads **"Connection closed"**, that is transport, not
+credentials - n8n never got far enough to try the password. Check SSL/TLS is
+on (465 needs TLS from the first byte), then try port 587 with SSL/TLS off,
+which is STARTTLS. If neither connects the host is blocking outbound SMTP.
+A wrong password says "Invalid login" instead.
 
 Two things worth doing before activation:
 
 - **Do not use an Instantly sending domain for this.** Those domains are being
   warmed for cold outreach from around 22 Sept. Mixing transactional campaign
   mail into a warming domain is a good way to lose both.
-- The `from_email` in each workflow's Config node defaults to
-  `campaign-bot@doviloop.dev`, except WF-C2, whose nurture emails come from
-  `dovy@doviloop.dev` because a human wrote them and a human will get the
-  replies. Set both addresses to something that actually accepts mail.
+- **`from_email` is not a free choice - it must equal the SMTP user.** Every
+  workflow now sends from `dovyvini@doviloop.dev`, built from one `SENDER_EMAIL`
+  constant in `tools/build_workflows.py`. Google Workspace rewrites or rejects
+  a From that is neither the authenticated mailbox nor one of its verified
+  "Send mail as" aliases, so an unverified address does not fail loudly - the
+  mail goes out wearing a different name than the one in the export.
+
+  This collapsed a distinction the build used to make: C2's nurture notes came
+  from `dovy@doviloop.dev` because a human wrote them, everything else from
+  `campaign-bot@doviloop.dev`. Neither was verified on this mailbox, so both
+  were fiction. C2 keeps the intent through `reply_to`, which the sending
+  account does not constrain. To restore the split, verify those two addresses
+  under **Gmail → Settings → Accounts → Send mail as** and set them back in the
+  builder.
 
 ## 3. `Buffer API token`
 

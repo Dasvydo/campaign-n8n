@@ -30,7 +30,7 @@
             {
               "id": "cfg",
               "name": "cfg",
-              "value": "={{ {\n  ledger_url: 'https://yheilbuunzdugfnermfb.supabase.co',\n  dovy_email: 'hello@doviloop.dev',\n  from_email: 'campaign-bot@doviloop.dev',\n  data_dir: '/home/node/.n8n/campaign',\n  stripe_api: 'https://api.stripe.com/v1',\n  price_seat_monthly: '',\n  price_setup_once: '',\n  success_url: 'https://doviloop.dev/welcome',\n  cancel_url: 'https://doviloop.dev',\n  usd_eur_rate: null\n} }}",
+              "value": "={{ {\n  ledger_url: 'https://yheilbuunzdugfnermfb.supabase.co',\n  dovy_email: 'hello@doviloop.dev',\n  from_email: 'dovyvini@doviloop.dev',\n  data_dir: '/home/node/.n8n/campaign',\n  stripe_api: 'https://api.stripe.com/v1',\n  price_seat_monthly: '',\n  price_setup_once: '',\n  success_url: 'https://doviloop.dev/welcome',\n  cancel_url: 'https://doviloop.dev',\n  usd_eur_rate: null\n} }}",
               "type": "object"
             }
           ]
@@ -439,7 +439,7 @@
             {
               "id": "cfg",
               "name": "cfg",
-              "value": "={{ {\n  ledger_url: 'https://yheilbuunzdugfnermfb.supabase.co',\n  dovy_email: 'hello@doviloop.dev',\n  from_email: 'campaign-bot@doviloop.dev',\n  data_dir: '/home/node/.n8n/campaign',\n  stripe_api: 'https://api.stripe.com/v1',\n  price_seat_monthly: '',\n  price_setup_once: '',\n  success_url: 'https://doviloop.dev/welcome',\n  cancel_url: 'https://doviloop.dev',\n  usd_eur_rate: null\n} }}",
+              "value": "={{ {\n  ledger_url: 'https://yheilbuunzdugfnermfb.supabase.co',\n  dovy_email: 'hello@doviloop.dev',\n  from_email: 'dovyvini@doviloop.dev',\n  data_dir: '/home/node/.n8n/campaign',\n  stripe_api: 'https://api.stripe.com/v1',\n  price_seat_monthly: '',\n  price_setup_once: '',\n  success_url: 'https://doviloop.dev/welcome',\n  cancel_url: 'https://doviloop.dev',\n  usd_eur_rate: null\n} }}",
               "type": "object"
             }
           ]

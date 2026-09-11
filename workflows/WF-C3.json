@@ -30,7 +30,7 @@
             {
               "id": "cfg",
               "name": "cfg",
-              "value": "={{ {\n  ledger_url: 'https://yheilbuunzdugfnermfb.supabase.co',\n  dovy_email: 'hello@doviloop.dev',\n  from_email: 'campaign-bot@doviloop.dev',\n  data_dir: '/home/node/.n8n/campaign',\n  publisher: 'buffer',\n  buffer_api_url: 'https://graph.buffer.com/',\n  buffer_channels: { instagram: '', facebook: '', youtube_shorts: '', linkedin: '' },\n  meta_graph_version: 'v21.0',\n  ig_user_id: '',\n  fb_page_id: '',\n  asset_base_url: ''\n} }}",
+              "value": "={{ {\n  ledger_url: 'https://yheilbuunzdugfnermfb.supabase.co',\n  dovy_email: 'hello@doviloop.dev',\n  from_email: 'dovyvini@doviloop.dev',\n  data_dir: '/home/node/.n8n/campaign',\n  publisher: 'buffer',\n  buffer_api_url: 'https://graph.buffer.com/',\n  buffer_channels: { instagram: '', facebook: '', youtube_shorts: '', linkedin: '' },\n  meta_graph_version: 'v21.0',\n  ig_user_id: '',\n  fb_page_id: '',\n  asset_base_url: ''\n} }}",
               "type": "object"
             }
           ]

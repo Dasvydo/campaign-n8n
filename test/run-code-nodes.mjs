@@ -607,8 +607,22 @@ const tokenA = r4.run('WF-C4', 'Match keyword + rate limit',
   .json.approval_token;
 check('two approval tokens for the SAME comment differ',
   tokenA !== hit.approval_token, `${hit.approval_token} vs ${tokenA}`);
-check('the approval token decodes to nothing: it is random, not encoded',
-  !Buffer.from(hit.approval_token, 'base64url').toString('utf8').includes('|'));
+// This assertion used to base64url-decode the token and check the bytes carried
+// no '|'. That was PROBABILISTIC, not deterministic: the token is 64 random hex
+// characters, so ~48 random bytes come out, and P(one of them is 0x7C) is about
+// 22%. Measured 2026-09-11 over 20 consecutive runs: 15 green, 5 red, on an
+// unmodified tree. A suite that fails one run in five teaches people to re-run
+// it, which is how a real failure gets waved through.
+//
+// The property it was reaching for is a statement about the CODE, so assert on
+// the code, read out of the real export like every other check in this file.
+const tokenSrc = nodeOf('WF-C4', 'Match keyword + rate limit').parameters.jsCode;
+check('the token is built from crypto.randomUUID, not derived from the comment',
+  /crypto\.randomUUID\(\)/.test(tokenSrc));
+check('nothing encodes its way into the token: no base64, no Buffer, no timestamp',
+  !/base64|Buffer\.from|btoa\(/.test(tokenSrc.split('const token')[1] || ''));
+check('and the emitted token is 64 hex characters, which carries no structure',
+  /^[0-9a-f]{64}$/.test(hit.approval_token), hit.approval_token);
 check('and it carries neither the comment id nor the user id',
   !hit.approval_token.includes(String(
     payloads.wf_c4_meta_comment.instagram_keyword_hit.body.entry?.[0]

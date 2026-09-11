@@ -62,7 +62,7 @@
             {
               "id": "cfg",
               "name": "cfg",
-              "value": "={{ {\n  ledger_url: 'https://yheilbuunzdugfnermfb.supabase.co',\n  dovy_email: 'hello@doviloop.dev',\n  from_email: 'campaign-bot@doviloop.dev',\n  data_dir: '/home/node/.n8n/campaign',\n  meta_graph_version: 'v21.0',\n  ig_user_id: '',\n  fb_page_id: '',\n  landing_url: 'https://teams.doviloop.dev',\n  keywords: ['draft', 'drafts', 'demo', 'outlook', 'info'],\n  rate_limit_days: 90,\n  approve_base: 'https://viniflow-u57383.vm.elestio.app/webhook/campaign/meta-dm-approve'\n} }}",
+              "value": "={{ {\n  ledger_url: 'https://yheilbuunzdugfnermfb.supabase.co',\n  dovy_email: 'hello@doviloop.dev',\n  from_email: 'dovyvini@doviloop.dev',\n  data_dir: '/home/node/.n8n/campaign',\n  meta_graph_version: 'v21.0',\n  ig_user_id: '',\n  fb_page_id: '',\n  landing_url: 'https://teams.doviloop.dev',\n  keywords: ['draft', 'drafts', 'demo', 'outlook', 'info'],\n  rate_limit_days: 90,\n  approve_base: 'https://viniflow-u57383.vm.elestio.app/webhook/campaign/meta-dm-approve'\n} }}",
               "type": "object"
             }
           ]
@@ -313,7 +313,7 @@
             {
               "id": "cfg",
               "name": "cfg",
-              "value": "={{ {\n  ledger_url: 'https://yheilbuunzdugfnermfb.supabase.co',\n  dovy_email: 'hello@doviloop.dev',\n  from_email: 'campaign-bot@doviloop.dev',\n  data_dir: '/home/node/.n8n/campaign',\n  meta_graph_version: 'v21.0',\n  ig_user_id: '',\n  fb_page_id: '',\n  landing_url: 'https://teams.doviloop.dev',\n  keywords: ['draft', 'drafts', 'demo', 'outlook', 'info'],\n  rate_limit_days: 90,\n  approve_base: 'https://viniflow-u57383.vm.elestio.app/webhook/campaign/meta-dm-approve'\n} }}",
+              "value": "={{ {\n  ledger_url: 'https://yheilbuunzdugfnermfb.supabase.co',\n  dovy_email: 'hello@doviloop.dev',\n  from_email: 'dovyvini@doviloop.dev',\n  data_dir: '/home/node/.n8n/campaign',\n  meta_graph_version: 'v21.0',\n  ig_user_id: '',\n  fb_page_id: '',\n  landing_url: 'https://teams.doviloop.dev',\n  keywords: ['draft', 'drafts', 'demo', 'outlook', 'info'],\n  rate_limit_days: 90,\n  approve_base: 'https://viniflow-u57383.vm.elestio.app/webhook/campaign/meta-dm-approve'\n} }}",
               "type": "object"
             }
           ]

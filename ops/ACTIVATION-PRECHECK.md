@@ -188,7 +188,7 @@ Everything else can wait until the account it belongs to exists.
 ```
 ledger_url        'https://yheilbuunzdugfnermfb.supabase.co'   confirm: campaign, not product
 dovy_email        'hello@doviloop.dev'                          confirm: accepts mail
-from_email        'campaign-bot@doviloop.dev'                   confirm: accepts mail
+from_email        'dovyvini@doviloop.dev'                       the SMTP account itself
 data_dir          '/home/node/.n8n/campaign'                    confirm: exists, writable
 dedupe_ttl_hours  72                                            prefilled
 ```

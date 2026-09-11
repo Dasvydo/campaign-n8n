@@ -31,7 +31,7 @@
             {
               "id": "cfg",
               "name": "cfg",
-              "value": "={{ {\n  ledger_url: 'https://yheilbuunzdugfnermfb.supabase.co',\n  dovy_email: 'hello@doviloop.dev',\n  from_email: 'campaign-bot@doviloop.dev',\n  data_dir: '/home/node/.n8n/campaign',\n  dedupe_ttl_hours: 72\n} }}",
+              "value": "={{ {\n  ledger_url: 'https://yheilbuunzdugfnermfb.supabase.co',\n  dovy_email: 'hello@doviloop.dev',\n  from_email: 'dovyvini@doviloop.dev',\n  data_dir: '/home/node/.n8n/campaign',\n  dedupe_ttl_hours: 72\n} }}",
               "type": "object"
             }
           ]

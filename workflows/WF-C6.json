@@ -31,7 +31,7 @@
             {
               "id": "cfg",
               "name": "cfg",
-              "value": "={{ {\n  ledger_url: 'https://yheilbuunzdugfnermfb.supabase.co',\n  dovy_email: 'hello@doviloop.dev',\n  from_email: 'campaign-bot@doviloop.dev',\n  data_dir: '/home/node/.n8n/campaign',\n  python_bin: 'python3',\n  ledger_repo: '/opt/campaign/campaign-ledger',\n  ad_engine_repo: '/opt/campaign/ad-engine',\n  meta_graph_version: 'v21.0'\n} }}",
+              "value": "={{ {\n  ledger_url: 'https://yheilbuunzdugfnermfb.supabase.co',\n  dovy_email: 'hello@doviloop.dev',\n  from_email: 'dovyvini@doviloop.dev',\n  data_dir: '/home/node/.n8n/campaign',\n  python_bin: 'python3',\n  ledger_repo: '/opt/campaign/campaign-ledger',\n  ad_engine_repo: '/opt/campaign/ad-engine',\n  meta_graph_version: 'v21.0'\n} }}",
               "type": "object"
             }
           ]

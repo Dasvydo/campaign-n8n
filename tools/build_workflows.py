@@ -30,6 +30,22 @@ OUT = ROOT / "workflows"
 # 404s for the recipient. Do not paste a URL copied from the editor's Test tab.
 N8N_WEBHOOK_BASE = "https://viniflow-u57383.vm.elestio.app/webhook"
 
+# The mailbox the campaign authenticates to Gmail as, and therefore the ONLY
+# address it can put in a From header. Google Workspace rewrites or rejects a
+# From that is not the authenticated user or one of its verified "Send mail as"
+# aliases, so from_email is not a free choice: it has to match the SMTP
+# credential. Confirmed working 2026-09-11 - n8n's credential test went green
+# against smtp.gmail.com:465 as this user.
+#
+# This collapses a distinction the build used to make: WF-C2's nurture notes
+# came from dovy@doviloop.dev because a human wrote them, everything else from
+# campaign-bot@doviloop.dev. Neither address is verified on this mailbox, so
+# both were fiction. C2 keeps the intent through reply_to, which is not
+# constrained by the sending account. To restore the split, verify the two
+# addresses under Gmail > Settings > Accounts > Send mail as, then set them
+# back here - nothing else needs to change.
+SENDER_EMAIL = "dovyvini@doviloop.dev"
+
 # Deterministic node IDs: same input, same file, so a rebuild is a clean diff.
 _NS = uuid.UUID("6f1a5b2c-9d3e-4a71-8c52-0e7b4d9a1f60")
 
@@ -304,7 +320,7 @@ C1_CONFIG = (
     "={{ {\n"
     "  ledger_url: 'https://yheilbuunzdugfnermfb.supabase.co',\n"
     "  dovy_email: 'hello@doviloop.dev',\n"
-    "  from_email: 'campaign-bot@doviloop.dev',\n"
+    "  from_email: '" + SENDER_EMAIL + "',\n"
     "  data_dir: '/home/node/.n8n/campaign',\n"
     "  dedupe_ttl_hours: 72\n"
     "} }}"
@@ -866,7 +882,7 @@ C2_CONFIG = (
     "={{ {\n"
     "  ledger_url: 'https://yheilbuunzdugfnermfb.supabase.co',\n"
     "  dovy_email: 'hello@doviloop.dev',\n"
-    "  from_email: 'dovy@doviloop.dev',\n"
+    "  from_email: '" + SENDER_EMAIL + "',\n"
     "  reply_to: 'hello@doviloop.dev',\n"
     "  data_dir: '/home/node/.n8n/campaign',\n"
     "  unsubscribe_base: '" + N8N_WEBHOOK_BASE + "/campaign/unsubscribe',\n"
@@ -1377,7 +1393,7 @@ C3_CONFIG = (
     "={{ {\n"
     "  ledger_url: 'https://yheilbuunzdugfnermfb.supabase.co',\n"
     "  dovy_email: 'hello@doviloop.dev',\n"
-    "  from_email: 'campaign-bot@doviloop.dev',\n"
+    "  from_email: '" + SENDER_EMAIL + "',\n"
     "  data_dir: '/home/node/.n8n/campaign',\n"
     "  publisher: 'buffer',\n"
     "  buffer_api_url: 'https://graph.buffer.com/',\n"
@@ -2099,7 +2115,7 @@ C4_CONFIG = (
     "={{ {\n"
     "  ledger_url: 'https://yheilbuunzdugfnermfb.supabase.co',\n"
     "  dovy_email: 'hello@doviloop.dev',\n"
-    "  from_email: 'campaign-bot@doviloop.dev',\n"
+    "  from_email: '" + SENDER_EMAIL + "',\n"
     "  data_dir: '/home/node/.n8n/campaign',\n"
     "  meta_graph_version: 'v21.0',\n"
     "  ig_user_id: '',\n"
@@ -2595,7 +2611,7 @@ C5_CONFIG = (
     "={{ {\n"
     "  ledger_url: 'https://yheilbuunzdugfnermfb.supabase.co',\n"
     "  dovy_email: 'hello@doviloop.dev',\n"
-    "  from_email: 'campaign-bot@doviloop.dev',\n"
+    "  from_email: '" + SENDER_EMAIL + "',\n"
     "  data_dir: '/home/node/.n8n/campaign',\n"
     "  stripe_api: 'https://api.stripe.com/v1',\n"
     "  price_seat_monthly: '',\n"
@@ -3070,7 +3086,7 @@ C6_CONFIG = (
     "={{ {\n"
     "  ledger_url: 'https://yheilbuunzdugfnermfb.supabase.co',\n"
     "  dovy_email: 'hello@doviloop.dev',\n"
-    "  from_email: 'campaign-bot@doviloop.dev',\n"
+    "  from_email: '" + SENDER_EMAIL + "',\n"
     "  data_dir: '/home/node/.n8n/campaign',\n"
     "  python_bin: 'python3',\n"
     "  ledger_repo: '/opt/campaign/campaign-ledger',\n"
