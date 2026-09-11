@@ -2480,6 +2480,13 @@ def build_c4():
            if_bool("={{ $json.matched }}"))
     w.node("No match, do nothing", "n8n-nodes-base.noOp", 1, (640, 160), {})
 
+    # WF-C4 was the ONE ledger-touching workflow without this guard. C1, C3, C5
+    # and C6 all refuse to run against the product project; C4 read the ledger
+    # with nothing stopping it. The read is a GET on the campaign credential so
+    # the blast radius was small, but "small" is not the standard the other four
+    # are held to, and ACTIVATION-PRECHECK had to tell operators to check this
+    # one value by eye - in BOTH Config nodes. Now it is checked by the workflow.
+    w.node("Guard: ledger target", "n8n-nodes-base.code", 2, (520, -100), code(GUARD_JS))
     w.node("Ledger: find the reel", "n8n-nodes-base.httpRequest", 4.2, (640, -100),
            http_ledger("GET",
                        "={{ $json.cfg.ledger_url }}/rest/v1/content"
@@ -2580,7 +2587,8 @@ return out;
     w.link("Webhook — Meta comments", "Config")
     w.link("Config", "Match keyword + rate limit")
     w.link("Match keyword + rate limit", "IF keyword matched")
-    w.link("IF keyword matched", "Ledger: find the reel", 0)
+    w.link("IF keyword matched", "Guard: ledger target", 0)
+    w.link("Guard: ledger target", "Ledger: find the reel")
     w.link("IF keyword matched", "No match, do nothing", 1)
     w.link("Ledger: find the reel", "Merge lookup onto the comment")
     w.link("Merge lookup onto the comment", "Build DM draft")

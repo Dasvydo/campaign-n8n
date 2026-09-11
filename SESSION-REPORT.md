@@ -60,6 +60,15 @@ untouched, as were all six exports, `tools/build_workflows.py`, and
 
 Ordered by how much they would cost.
 
+> **Update 2026-09-11: FIXED.** A `Guard: ledger target` now sits between
+> `IF keyword matched` and `Ledger: find the reel`, so all five ledger-touching
+> workflows carry it. The finding below stands as written for the record.
+> The more interesting half was the test: it checked a hand-written list of
+> four workflow names, which is why it agreed with the omission instead of
+> catching it. That list is now derived from which workflows call PostgREST,
+> and a second check walks the connections to prove each guard is upstream of
+> the ledger call rather than merely present.
+
 1. **WF-C4 reads the ledger with no `Guard: ledger target` node.** Five
    workflows carry the Supabase credential; only four carry the guard. C1, C3,
    C5 and C6 throw if `ledger_url` names the forbidden product project

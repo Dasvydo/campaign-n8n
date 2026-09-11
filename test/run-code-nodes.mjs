@@ -821,11 +821,41 @@ section('Cross-cutting');
 for (const key of ['WF-C1', 'WF-C2', 'WF-C3', 'WF-C4', 'WF-C5', 'WF-C6']) {
   check(`${key} is exported inactive`, wf(key).active === false);
 }
-const guardHolders = ['WF-C1', 'WF-C3', 'WF-C5', 'WF-C6'];
+// This used to be a hardcoded list - WF-C1, C3, C5, C6 - and WF-C4 was missing
+// from it because WF-C4 was missing the guard. A list of who should be checked,
+// maintained by hand alongside the thing it checks, cannot catch an omission in
+// the thing it checks: it just quietly agrees. So DERIVE it. Any workflow that
+// calls PostgREST touches the ledger, and any workflow that touches the ledger
+// must refuse the product project. Add a ledger call to a seventh workflow and
+// forget the guard, and this fails without anyone updating a list.
+const ALL = ['WF-C1', 'WF-C2', 'WF-C3', 'WF-C4', 'WF-C5', 'WF-C6'];
+const touchesLedger = key =>
+  wf(key).nodes.some(n => JSON.stringify(n.parameters || {}).includes('/rest/v1'));
+const guardHolders = ALL.filter(touchesLedger);
+check('five of the six workflows touch the ledger (C2 is email only)',
+  guardHolders.length === 5 && !guardHolders.includes('WF-C2'), guardHolders.join(','));
 for (const key of guardHolders) {
   const g = wf(key).nodes.find(n => n.name === 'Guard: ledger target');
   check(`${key} refuses to run against the product project`,
     !!g && g.parameters.jsCode.includes('kngcxwcybozgqgnoweyt'));
+}
+// And the guard must sit BETWEEN the entry and the ledger call, not merely exist.
+for (const key of guardHolders) {
+  const conns = wf(key).connections;
+  const reachesLedger = (from, seen = new Set()) => {
+    if (seen.has(from)) return false;
+    seen.add(from);
+    for (const outs of Object.values(conns[from] || {}))
+      for (const tg of outs || [])
+        for (const t of tg || []) {
+          const node = wf(key).nodes.find(n => n.name === t.node);
+          if (node && JSON.stringify(node.parameters || {}).includes('/rest/v1')) return true;
+          if (reachesLedger(t.node, seen)) return true;
+        }
+    return false;
+  };
+  check(`${key}'s guard is upstream of its ledger call, not just present`,
+    reachesLedger('Guard: ledger target'));
 }
 const rG = makeRunner();
 let guardThrew = 0;
@@ -837,6 +867,13 @@ check('the guard throws on blank, on the product ref, and on non-https', guardTh
 check('the guard passes a real campaign URL',
   rG.run('WF-C1', 'Guard: ledger target',
     [{ json: { cfg: { ledger_url: 'https://yheilbuunzdugfnermfb.supabase.co' } } }]).length === 1);
+// Run WF-C4's OWN copy, since that is the one that was absent until 2026-09-11.
+let c4Threw = 0;
+for (const url of ['', 'https://kngcxwcybozgqgnoweyt.supabase.co', 'http://insecure.example']) {
+  try { rG.run('WF-C4', 'Guard: ledger target', [{ json: { cfg: { ledger_url: url } } }]); }
+  catch { c4Threw++; }
+}
+check("WF-C4's own guard throws on all three, not just C1's", c4Threw === 3);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) { console.log('\nfailures:'); failures.forEach(f => console.log('  - ' + f)); }

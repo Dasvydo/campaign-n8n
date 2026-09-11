@@ -108,12 +108,16 @@ Everything else can wait until the account it belongs to exists.
   Without it every ledger call in C1, C3, C4, C5 and C6 returns
   `PGRST106 schema must be one of the following`.
 - **Ledger project must be the campaign project** `yheilbuunzdugfnermfb`, never
-  the product project `kngcxwcybozgqgnoweyt`. **Four** workflows carry a
-  `Guard: ledger target` node that throws on the product ref — C1, C3, C5, C6 —
-  proved by `test/run-code-nodes.mjs`. Do not remove those nodes.
-  **Five workflows touch the ledger. WF-C4 is the one without a guard** (see
-  its section below), so its `ledger_url` is the one value in this campaign you
-  have to check by eye.
+  the product project `kngcxwcybozgqgnoweyt`. **All five ledger-touching
+  workflows now carry a `Guard: ledger target` node** that throws on the product
+  ref — C1, C3, C4, C5, C6. WF-C4 was the exception until 2026-09-11; its guard
+  was added and the missing one is why the test no longer takes a hand-written
+  list of which workflows to check. It derives the list from which workflows
+  call PostgREST, and separately walks the connections to prove each guard sits
+  **upstream of** the ledger call rather than merely existing. Both were
+  mutation-tested by removing C4's guard and confirming two failures.
+  C2 has no guard and needs none: it never touches the ledger.
+  Do not remove those nodes.
 - **`data_dir` must exist and be writable by the n8n process.** All six Config
   nodes ship `data_dir: '/home/node/.n8n/campaign'`, and eight append-only
   files are written under it. This directory is not created by the import:
@@ -495,13 +499,14 @@ meta_graph_version 'v21.0'
 ledger_url / dovy_email / from_email / data_dir   prefilled
 ```
 
-**`ledger_url` in WF-C4 is unguarded — check it by eye, in both Config nodes.**
-WF-C4 reads the ledger (`Ledger: find the reel`, a GET against
-`{{cfg.ledger_url}}/rest/v1/content`, on the Supabase credential) but is the
-only ledger-touching workflow with **no** `Guard: ledger target` node. C1, C3,
-C5 and C6 all throw on the product project ref; C4 would not. The read is a
-GET and the credential is the campaign one, so the blast radius is small — but
-the refusal that protects the other four is genuinely absent here.
+**`ledger_url` in WF-C4 is guarded as of 2026-09-11.** It used to be the one
+value in this campaign you had to check by eye, in both Config nodes, because
+WF-C4 read the ledger (`Ledger: find the reel`, a GET against
+`{{cfg.ledger_url}}/rest/v1/content`) while being the only ledger-touching
+workflow with no `Guard: ledger target` node. A `Guard: ledger target` now sits
+between `IF keyword matched` and that read, using the same `GUARD_JS` body as
+the other four, and `test/run-code-nodes.mjs` exercises C4's own copy rather
+than assuming C1's behaviour covers it.
 
 There is no path from a comment to a DM that does not pass through Dovy
 clicking the link in the approval email. `approve_base` was blank until
