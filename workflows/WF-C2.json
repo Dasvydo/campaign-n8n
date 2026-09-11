@@ -40,7 +40,7 @@
             {
               "id": "cfg",
               "name": "cfg",
-              "value": "={{ {\n  ledger_url: 'https://yheilbuunzdugfnermfb.supabase.co',\n  dovy_email: 'hello@doviloop.dev',\n  from_email: 'dovy@doviloop.dev',\n  reply_to: 'hello@doviloop.dev',\n  data_dir: '/home/node/.n8n/campaign',\n  unsubscribe_base: 'https://viniflow-u57383.vm.elestio.app/webhook/campaign/unsubscribe',\n  pricing_url: 'https://doviloop.dev/pricing',\n  postal_address: '',\n  dk_marketing_law_confirmed: false\n} }}",
+              "value": "={{ {\n  ledger_url: 'https://yheilbuunzdugfnermfb.supabase.co',\n  dovy_email: 'hello@doviloop.dev',\n  from_email: 'dovy@doviloop.dev',\n  reply_to: 'hello@doviloop.dev',\n  data_dir: '/home/node/.n8n/campaign',\n  unsubscribe_base: 'https://viniflow-u57383.vm.elestio.app/webhook/campaign/unsubscribe',\n  pricing_url: 'https://doviloop.dev/pricing',\n  postal_address: 'DoviLoop OÜ, Sepapaja 6, 15551 Tallinn, Estonia',\n  dk_marketing_law_confirmed: false\n} }}",
               "type": "object"
             }
           ]
@@ -55,7 +55,7 @@
         0,
         -50
       ],
-      "notes": "postal_address must be filled before this workflow is activated. unsubscribe_base is built from N8N_WEBHOOK_BASE in the builder; re-point that constant if the instance moves. See README."
+      "notes": "postal_address and unsubscribe_base are both filled. The address is the sender identity every one of these three emails carries in its footer, and it is a legal requirement, not decoration - do not blank it. unsubscribe_base is built from N8N_WEBHOOK_BASE in the builder; re-point that constant if the instance moves. See README."
     },
     {
       "parameters": {

@@ -871,7 +871,7 @@ C2_CONFIG = (
     "  data_dir: '/home/node/.n8n/campaign',\n"
     "  unsubscribe_base: '" + N8N_WEBHOOK_BASE + "/campaign/unsubscribe',\n"
     "  pricing_url: 'https://doviloop.dev/pricing',\n"
-    "  postal_address: '',\n"
+    "  postal_address: 'DoviLoop O\u00dc, Sepapaja 6, 15551 Tallinn, Estonia',\n"
     "  dk_marketing_law_confirmed: false\n"
     "} }}"
 )
@@ -1250,8 +1250,10 @@ def build_c2():
              "opt-in is a mailto and never reaches this.")
 
     w.node("Config", "n8n-nodes-base.set", 3.4, (0, -50), cfg_assignment(C2_CONFIG),
-           note="postal_address must be filled before this workflow is activated. "
-                "unsubscribe_base is built from N8N_WEBHOOK_BASE in the builder; "
+           note="postal_address and unsubscribe_base are both filled. The address is "
+                "the sender identity every one of these three emails carries in its "
+                "footer, and it is a legal requirement, not decoration - do not blank "
+                "it. unsubscribe_base is built from N8N_WEBHOOK_BASE in the builder; "
                 "re-point that constant if the instance moves. See README.")
     w.node("Consent gate", "n8n-nodes-base.code", 2, (220, -50), code(C2_CONSENT_JS))
     w.node("IF consent proven", "n8n-nodes-base.if", 2, (440, -50),

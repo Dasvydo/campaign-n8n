@@ -98,7 +98,7 @@ Batch B built into `campaign_db.py`. Do not remove it.
 | Workflow | Must fill before it works |
 |---|---|
 | C1 | `dovy_email`, `from_email`, `data_dir` |
-| C2 | `postal_address`, `from_email` — `unsubscribe_base` is now prefilled |
+| C2 | `from_email` — `unsubscribe_base` and `postal_address` are prefilled |
 | C3 | `publisher`, `buffer_channels` **or** `ig_user_id` + `fb_page_id`, `asset_base_url` |
 | C4 | `ig_user_id`, `fb_page_id`, `keywords` — `approve_base` is now prefilled |
 | C5 | `price_seat_monthly` (the 89 USD per seat per month Price), `price_setup_once` (the 500 USD one-off Price), `success_url`, `cancel_url`, and eventually `usd_eur_rate` |

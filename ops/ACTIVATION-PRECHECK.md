@@ -227,11 +227,11 @@ No ledger credential: WF-C2 never touches Supabase.
 
 **Sibling scripts** — none.
 
-**Config fields — one blank BLOCKS activation, one gates Denmark**
+**Config fields — no blanks left; one flag gates Denmark**
 
 ```
 unsubscribe_base            'https://viniflow-u57383.vm.elestio.app/webhook/campaign/unsubscribe'   FILLED 2026-09-11
-postal_address              ''      *** BLANK — must be filled before activating ***
+postal_address              'DoviLoop OÜ, Sepapaja 6, 15551 Tallinn, Estonia'   FILLED 2026-09-11
 dk_marketing_law_confirmed  false   *** gates all Danish email — see below ***
 from_email                  'dovy@doviloop.dev'      (a human wrote these; a human gets the replies)
 reply_to                    'hello@doviloop.dev'
@@ -245,11 +245,15 @@ constant in `tools/build_workflows.py`, and verified: it resolves to
 exactly the path of this workflow's own `Webhook — unsubscribe` node (GET).
 Re-point that constant and rebuild if the instance ever moves.
 
-**`postal_address` is still blank and still blocks activation.** Nothing
-throws — the unsubscribe URL is built by string concatenation and the postal
-block is simply omitted — so a blank address means three marketing emails go
-out without the sender's postal address, which is a legal requirement, not a
-nicety.
+**`postal_address` was filled on 2026-09-11** — confirmed by Dovy — and
+rendered to check it survives the footer's HTML escaping intact, umlaut
+included. It appears under the unsubscribe link in all three nurture emails.
+
+It is worth knowing what happens if anyone blanks it again: **nothing throws.**
+The footer builds it as `cfg.postal_address ? '<br>' + esc(...) : ''`, so an
+empty value silently omits the sender's postal address from three marketing
+emails. That is a legal requirement, not a nicety, and its absence is invisible
+in the editor. There is no config blank left in WF-C2.
 
 ## `dk_marketing_law_confirmed` — the two-key gate on Danish email
 
