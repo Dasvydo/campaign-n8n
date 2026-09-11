@@ -5,9 +5,32 @@ JSON, or anywhere in this container. Every node references a credential by NAME
 only; n8n matches it to whatever you create with that name at import time.
 
 Create them in n8n under **Credentials → Add credential**, using the exact names
-in the "Name in n8n" column. If a name does not match, the node shows a red
-"credential not found" badge on import and you pick it from a dropdown, which is
-also fine. Nothing breaks.
+in the "Name in n8n" column. **Create them BEFORE importing the workflows.**
+
+> ### The names are not advisory, and a mismatch is not visible
+>
+> This section used to say that a name which does not match shows a red
+> "credential not found" badge you can resolve from a dropdown, and that nothing
+> breaks. **That is wrong, and it was tested on 2026-09-11.**
+>
+> The six workflows were imported into the live instance via
+> `POST /api/v1/workflows` with none of these credentials created first. n8n did
+> not flag anything. It silently bound **all 31 credential-bearing nodes** to
+> whichever existing credential of the matching type it found - so every ledger
+> node came up pointing at `Supabase DoviLoop (pgvector)`, **the product
+> database's credential**, and every Meta, Buffer and Stripe node at an unrelated
+> secret belonging to another project entirely.
+>
+> Nothing ran: the imports were inactive and all six were deleted within a
+> minute, leaving the instance at exactly the 125 workflows it started with. But
+> a workflow that looks correctly imported while pointing at the wrong account is
+> the worst possible failure shape, and it is invisible in the editor unless you
+> open each node.
+>
+> **So: create all eight credentials first, with these names, character for
+> character. Then import. Then verify** - the check is to read back each
+> workflow's nodes and compare the credential names against the committed export,
+> not to glance at the canvas.
 
 `tools/validate.mjs` asserts, on every run, that no file contains anything but
 `{ name }` under a `credentials` key, and separately scans every string in every
