@@ -7,30 +7,75 @@ only; n8n matches it to whatever you create with that name at import time.
 Create them in n8n under **Credentials → Add credential**, using the exact names
 in the "Name in n8n" column. **Create them BEFORE importing the workflows.**
 
-> ### The names are not advisory, and a mismatch is not visible
+> ### THE PUBLIC API IGNORES CREDENTIAL NAMES. Bind by id.
 >
-> This section used to say that a name which does not match shows a red
-> "credential not found" badge you can resolve from a dropdown, and that nothing
-> breaks. **That is wrong, and it was tested on 2026-09-11.**
+> This box has been wrong twice, and the second version was wrong in a way that
+> produced a procedure which cannot work. Both corrections are kept, because the
+> shape of the mistake matters more than the conclusion.
 >
-> The six workflows were imported into the live instance via
-> `POST /api/v1/workflows` with none of these credentials created first. n8n did
-> not flag anything. It silently bound **all 31 credential-bearing nodes** to
-> whichever existing credential of the matching type it found - so every ledger
-> node came up pointing at `Supabase DoviLoop (pgvector)`, **the product
-> database's credential**, and every Meta, Buffer and Stripe node at an unrelated
-> secret belonging to another project entirely.
+> **Version 1 said** a name that does not match shows a red "credential not
+> found" badge and nothing breaks. False.
 >
-> Nothing ran: the imports were inactive and all six were deleted within a
-> minute, leaving the instance at exactly the 125 workflows it started with. But
-> a workflow that looks correctly imported while pointing at the wrong account is
-> the worst possible failure shape, and it is invisible in the editor unless you
-> open each node.
+> **Version 2 said** the 2026-09-11 incident - `POST /api/v1/workflows` with none
+> of these credentials created, and all **31 credential-bearing nodes** silently
+> bound to whatever existing credential of the matching type n8n found, every
+> ledger node onto `Supabase DoviLoop (pgvector)`, **the product database** -
+> happened *because the credentials did not exist yet*, and that creating them
+> first with exact names would fix it. **Also false, measured the same day.**
 >
-> **So: create all eight credentials first, with these names, character for
-> character. Then import. Then verify** - the check is to read back each
-> workflow's nodes and compare the credential names against the committed export,
-> not to glance at the canvas.
+> Four workflows were posted, each naming a different credential, and every one
+> came back bound to the same wrong credential:
+>
+> ```
+> asked for  dsd-supabase-service-role                   -> Supabase DoviLoop (pgvector)
+> asked for  Supabase account                            -> Supabase DoviLoop (pgvector)
+> asked for  Campaign Ledger (Supabase, campaign schema) -> Supabase DoviLoop (pgvector)
+> asked for  TOTAL GARBAGE THAT CANNOT EXIST             -> Supabase DoviLoop (pgvector)
+> ```
+>
+> The first two **exist on the instance**. The name is not consulted at all. So
+> creating the credentials first changes nothing about an API import, and the
+> incident would have happened either way.
+>
+> **What the API does honour is `id`:**
+>
+> ```
+> sent {id: 9siuWUnT9BvuJFK6, name: "deliberately the wrong name"}
+> got  {id: 9siuWUnT9BvuJFK6, name: "dsd-supabase-service-role"}
+> ```
+>
+> It resolves the id and **rewrites the name to match**. That also gives a free
+> existence check: send a sentinel name with an id, and if the name comes back
+> unchanged the id does not exist. A garbage id behaves identically to one that
+> is merely wrong, which is how `i3saeYflwqETYMaV` - a *project* id pasted from
+> `/projects/<id>/credentials` - was caught before it reached an import.
+>
+> **So the procedure is:**
+>
+> 1. Create the credentials in the UI, named as below. The names are for humans
+>    and for a UI import; the API will not read them.
+> 2. Collect each credential's **id** from its URL: `.../credentials/<id>`.
+> 3. Inject `{id, name}` into every `credentials` block at import time. Ids are
+>    instance-specific and are deliberately NOT committed to this repo.
+> 4. **Verify by reading every node back** and diffing both the id and the name
+>    against the committed export. Not by glancing at the canvas.
+>
+> A UI import (Workflows -> Import from File) does resolve by name, which is why
+> the names still matter. The API does not.
+
+> ### Imported 2026-09-11
+>
+> WF-C1 (`iaNNhNu7OA4aHCKv`) and WF-C2 (`kOby8XpvzVW5HOGG`), both inactive,
+> 8 of 8 credential-bearing nodes verified bound by id. Instance went 125 -> 127
+> with the active count unchanged at 21.
+>
+> **WF-C6 was deliberately held back.** Its `YouTube: video statistics` and
+> `Meta: post insights` nodes have no credential yet and **no `onError`**, so
+> they would either hard-fail or bind to a stranger's token. The no-stats branch
+> that `README.md` promises is real but is keyed on *whether there is published
+> content*, not on whether credentials exist - so C6 is harmless today and a
+> landmine the first time a reel publishes. Import it once credentials 4 and 5
+> exist.
 
 `tools/validate.mjs` asserts, on every run, that no file contains anything but
 `{ name }` under a `credentials` key, and separately scans every string in every

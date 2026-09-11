@@ -138,16 +138,23 @@ Everything else can wait until the account it belongs to exists.
   and can be disabled by `NODES_EXCLUDE` on a self-hosted instance. The
   documented host is self-hosted (Elestio), so this should hold — confirm it
   before Stage 1 rather than at 16:00 on a Friday.
-- **CREATE THE EIGHT CREDENTIALS BEFORE IMPORTING. Tested 2026-09-11.**
-  Importing first does not produce "credential not found" badges. n8n silently
-  binds every credential-bearing node to an existing credential of the matching
-  type: a trial import of all six put every ledger node on
-  `Supabase DoviLoop (pgvector)` - the product database - and every Meta, Buffer
-  and Stripe node on an unrelated secret. 31 of 31 nodes, no warning anywhere.
-  The workflows were deleted immediately and nothing ran, but the failure is
-  invisible on the canvas. `CREDENTIALS.md` carries the full account.
-  **After importing, verify by reading each workflow's nodes back through the
-  API and diffing the credential names against the committed export.**
+- **BIND CREDENTIALS BY `id`. The public API ignores names. Measured 2026-09-11.**
+  An earlier version of this bullet said the fix was to create the eight
+  credentials before importing, with exact names. That is not the fix, and was
+  disproved the same day: four workflows were posted naming four different
+  credentials - two of which exist on the instance - and all four came back
+  bound to `Supabase DoviLoop (pgvector)`, the product database. A name that
+  exists and a name that is pure garbage behave identically. Creating the
+  credentials first changes nothing about an API import.
+  What the API honours is `id`, and it rewrites the name to match the id it
+  resolved. So: collect each credential's id from its URL
+  (`.../credentials/<id>` - note that `/projects/<id>/credentials` gives a
+  PROJECT id, which will silently not resolve), inject `{id, name}` at import
+  time, and keep ids out of this repo since they are instance-specific.
+  A UI import does resolve by name; that is why the names still matter.
+  **Then verify by reading each workflow's nodes back and diffing BOTH the id
+  and the name against the committed export.** `CREDENTIALS.md` has the full
+  account and the measurements.
 - **Path collision: CHECKED AND CLEAR, 2026-09-10.** Queried the live instance
   directly (`GET /api/v1/workflows?limit=250`): 125 workflows, 21 active, 47
   bound webhook paths, and **not one begins `campaign/`**. All eight paths this
