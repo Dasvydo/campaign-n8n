@@ -97,7 +97,7 @@ function check(label, cond, detail) {
 }
 function section(t) { console.log(`\n${t}\n${'-'.repeat(t.length)}`); }
 
-const CFG_C1 = { ledger_url: 'https://oqpeebtwtikdzorgouxd.supabase.co',
+const CFG_C1 = { ledger_url: 'https://yheilbuunzdugfnermfb.supabase.co',
                  dovy_email: 'hello@doviloop.dev', from_email: 'bot@doviloop.dev',
                  data_dir: '/tmp/campaign' };
 
@@ -248,7 +248,7 @@ check('a gmail_on_request lead gets the Gmail note in the body',
 section('WF-C2 · the consent gate is the legal control, so it is tested hardest');
 
 const c2 = payloads.wf_c2_nurture;
-const CFG_C2 = { ledger_url: 'https://oqpeebtwtikdzorgouxd.supabase.co',
+const CFG_C2 = { ledger_url: 'https://yheilbuunzdugfnermfb.supabase.co',
                  dovy_email: 'hello@doviloop.dev', from_email: 'dovy@doviloop.dev',
                  unsubscribe_base: 'https://n8n.example/webhook/campaign/unsubscribe',
                  pricing_url: 'https://doviloop.dev/pricing',
@@ -351,7 +351,7 @@ check('and an unsubscribed address can never be re-enrolled',
 section('WF-C3 · approval fails closed, and the non-Buffer fallback path works');
 
 const CFG_C3_DIRECT = {
-  ledger_url: 'https://oqpeebtwtikdzorgouxd.supabase.co',
+  ledger_url: 'https://yheilbuunzdugfnermfb.supabase.co',
   dovy_email: 'hello@doviloop.dev', from_email: 'bot@doviloop.dev',
   publisher: 'direct',
   buffer_api_url: 'https://graph.buffer.com/',
@@ -510,7 +510,7 @@ check('"api" is NOT accepted as proof of auto-publish',
    ========================================================================= */
 section('WF-C4 · keyword match, rate limit, and the mandatory approval step');
 
-const CFG_C4 = { ledger_url: 'https://oqpeebtwtikdzorgouxd.supabase.co',
+const CFG_C4 = { ledger_url: 'https://yheilbuunzdugfnermfb.supabase.co',
   dovy_email: 'hello@doviloop.dev', from_email: 'bot@doviloop.dev',
   meta_graph_version: 'v21.0', ig_user_id: '178414', fb_page_id: '999',
   landing_url: 'https://teams.doviloop.dev',
@@ -635,7 +635,7 @@ check('no Code node in any workflow names a superseded sentiment value',
 
 section('WF-C5 · a link, never a charge');
 
-const CFG_C5 = { ledger_url: 'https://oqpeebtwtikdzorgouxd.supabase.co',
+const CFG_C5 = { ledger_url: 'https://yheilbuunzdugfnermfb.supabase.co',
   dovy_email: 'hello@doviloop.dev', from_email: 'bot@doviloop.dev',
   stripe_api: 'https://api.stripe.com/v1',
   price_seat_monthly: 'price_seat_TEST', price_setup_once: 'price_setup_TEST',
@@ -720,7 +720,7 @@ check('a non-payment event writes nothing', notPaid.paid === false && notPaid.pa
 section('WF-C6 · snapshot before render, and the markdown renderer');
 
 const r6 = makeRunner();
-const CFG_C6 = { ledger_url: 'https://oqpeebtwtikdzorgouxd.supabase.co',
+const CFG_C6 = { ledger_url: 'https://yheilbuunzdugfnermfb.supabase.co',
   dovy_email: 'hello@doviloop.dev', from_email: 'bot@doviloop.dev',
   python_bin: 'python3', ledger_repo: '/opt/campaign/campaign-ledger',
   ad_engine_repo: '/opt/campaign/ad-engine', meta_graph_version: 'v21.0' };
@@ -822,7 +822,7 @@ for (const url of ['', 'https://kngcxwcybozgqgnoweyt.supabase.co', 'http://insec
 check('the guard throws on blank, on the product ref, and on non-https', guardThrew === 3);
 check('the guard passes a real campaign URL',
   rG.run('WF-C1', 'Guard: ledger target',
-    [{ json: { cfg: { ledger_url: 'https://oqpeebtwtikdzorgouxd.supabase.co' } } }]).length === 1);
+    [{ json: { cfg: { ledger_url: 'https://yheilbuunzdugfnermfb.supabase.co' } } }]).length === 1);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) { console.log('\nfailures:'); failures.forEach(f => console.log('  - ' + f)); }

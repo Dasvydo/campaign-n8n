@@ -135,7 +135,7 @@ Re-run against git-tracked text files only, on the correct branches:
   note. `campaign_db.py:75` refuses it at startup; four of the six n8n workflows carry a
   `Guard: ledger target` node that throws on it; `tools/validate.mjs:26` fails any workflow
   containing it; `tests/run_local_proof.py` sets it deliberately to assert the refusal, and further
-  asserts the ref appears in no `.sql` file at all. The campaign points at `oqpeebtwtikdzorgouxd`,
+  asserts the ref appears in no `.sql` file at all. The campaign points at `yheilbuunzdugfnermfb`,
   schema `campaign`. **This is handled better than the brief required.**
 - **Migrations:** all four are file-only. Nothing executes DDL. `campaign-n8n/sql/004_consent.sql`
   is explicitly headed *"STATUS: NOT RUN. NOT APPLIED."*

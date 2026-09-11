@@ -107,7 +107,7 @@ Everything else can wait until the account it belongs to exists.
   `public`. Supabase → Settings → API → Exposed schemas → add `campaign`.
   Without it every ledger call in C1, C3, C4, C5 and C6 returns
   `PGRST106 schema must be one of the following`.
-- **Ledger project must be the campaign project** `oqpeebtwtikdzorgouxd`, never
+- **Ledger project must be the campaign project** `yheilbuunzdugfnermfb`, never
   the product project `kngcxwcybozgqgnoweyt`. **Four** workflows carry a
   `Guard: ledger target` node that throws on the product ref — C1, C3, C5, C6 —
   proved by `test/run-code-nodes.mjs`. Do not remove those nodes.
@@ -176,7 +176,7 @@ Everything else can wait until the account it belongs to exists.
 **Config fields — nothing is blank, but three values must be confirmed**
 
 ```
-ledger_url        'https://oqpeebtwtikdzorgouxd.supabase.co'   confirm: campaign, not product
+ledger_url        'https://yheilbuunzdugfnermfb.supabase.co'   confirm: campaign, not product
 dovy_email        'hello@doviloop.dev'                          confirm: accepts mail
 from_email        'campaign-bot@doviloop.dev'                   confirm: accepts mail
 data_dir          '/home/node/.n8n/campaign'                    confirm: exists, writable

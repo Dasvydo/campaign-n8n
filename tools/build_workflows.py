@@ -207,7 +207,7 @@ for (const item of $input.all()) {
   if (!url) {
     throw new Error(
       'Config.ledger_url is blank. Open the Config node and paste the CAMPAIGN ' +
-      'ledger project URL (https://oqpeebtwtikdzorgouxd.supabase.co, schema ' +
+      'ledger project URL (https://yheilbuunzdugfnermfb.supabase.co, schema ' +
       '"campaign", confirmed 2026-09-06). Refusing to run against nothing.');
   }
   if (url.includes(FORBIDDEN)) {
@@ -289,7 +289,7 @@ def append_file(path_expr):
 
 C1_CONFIG = (
     "={{ {\n"
-    "  ledger_url: 'https://oqpeebtwtikdzorgouxd.supabase.co',\n"
+    "  ledger_url: 'https://yheilbuunzdugfnermfb.supabase.co',\n"
     "  dovy_email: 'hello@doviloop.dev',\n"
     "  from_email: 'campaign-bot@doviloop.dev',\n"
     "  data_dir: '/home/node/.n8n/campaign',\n"
@@ -724,7 +724,7 @@ def build_c1():
         note="Production URL goes into Batch A's VITE_LEAD_WEBHOOK_URL.")
 
     w.node("Config", "n8n-nodes-base.set", 3.4, (20, 0), cfg_assignment(C1_CONFIG),
-           note="ledger_url is the CAMPAIGN ledger project oqpeebtwtikdzorgouxd, "
+           note="ledger_url is the CAMPAIGN ledger project yheilbuunzdugfnermfb, "
                 "confirmed by Dovy on 2026-09-06. Never the product project.")
     w.node("Validate and route", "n8n-nodes-base.code", 2, (240, 0), code(C1_VALIDATE_JS))
     w.node("IF payload valid", "n8n-nodes-base.if", 2, (460, 0), if_bool("={{ $json.ok }}"))
@@ -851,7 +851,7 @@ def build_c1():
 
 C2_CONFIG = (
     "={{ {\n"
-    "  ledger_url: 'https://oqpeebtwtikdzorgouxd.supabase.co',\n"
+    "  ledger_url: 'https://yheilbuunzdugfnermfb.supabase.co',\n"
     "  dovy_email: 'hello@doviloop.dev',\n"
     "  from_email: 'dovy@doviloop.dev',\n"
     "  reply_to: 'hello@doviloop.dev',\n"
@@ -1359,7 +1359,7 @@ def build_c2():
 
 C3_CONFIG = (
     "={{ {\n"
-    "  ledger_url: 'https://oqpeebtwtikdzorgouxd.supabase.co',\n"
+    "  ledger_url: 'https://yheilbuunzdugfnermfb.supabase.co',\n"
     "  dovy_email: 'hello@doviloop.dev',\n"
     "  from_email: 'campaign-bot@doviloop.dev',\n"
     "  data_dir: '/home/node/.n8n/campaign',\n"
@@ -2081,7 +2081,7 @@ return out;
 
 C4_CONFIG = (
     "={{ {\n"
-    "  ledger_url: 'https://oqpeebtwtikdzorgouxd.supabase.co',\n"
+    "  ledger_url: 'https://yheilbuunzdugfnermfb.supabase.co',\n"
     "  dovy_email: 'hello@doviloop.dev',\n"
     "  from_email: 'campaign-bot@doviloop.dev',\n"
     "  data_dir: '/home/node/.n8n/campaign',\n"
@@ -2577,7 +2577,7 @@ return out;
 
 C5_CONFIG = (
     "={{ {\n"
-    "  ledger_url: 'https://oqpeebtwtikdzorgouxd.supabase.co',\n"
+    "  ledger_url: 'https://yheilbuunzdugfnermfb.supabase.co',\n"
     "  dovy_email: 'hello@doviloop.dev',\n"
     "  from_email: 'campaign-bot@doviloop.dev',\n"
     "  data_dir: '/home/node/.n8n/campaign',\n"
@@ -3052,7 +3052,7 @@ def build_c5():
 
 C6_CONFIG = (
     "={{ {\n"
-    "  ledger_url: 'https://oqpeebtwtikdzorgouxd.supabase.co',\n"
+    "  ledger_url: 'https://yheilbuunzdugfnermfb.supabase.co',\n"
     "  dovy_email: 'hello@doviloop.dev',\n"
     "  from_email: 'campaign-bot@doviloop.dev',\n"
     "  data_dir: '/home/node/.n8n/campaign',\n"

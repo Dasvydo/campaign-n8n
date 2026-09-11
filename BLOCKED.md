@@ -248,7 +248,7 @@ LinkedIn posted by hand for the two localized reels a week.
   spec.
 - The only Supabase credential in this container points at the **forbidden
   product project**, confirmed for the fourth time in this campaign. The
-  campaign ledger project itself is now confirmed as `oqpeebtwtikdzorgouxd`
+  campaign ledger project itself is now confirmed as `yheilbuunzdugfnermfb`
   (Dovy, 2026-09-06) and is pre-filled in every Config node, but no credential
   for it exists here.
 - No Buffer, Meta, YouTube, LinkedIn, Stripe or SMTP credential exists here.

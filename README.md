@@ -85,7 +85,7 @@ Order matters only because WF-C1 is the one Batch A needs a URL from.
 In n8n: **Workflows → Import from File**, one at a time.
 
 After each import, open the **Config** node (a Set node, second from the left)
-and fill it in. **`ledger_url` ships as `https://oqpeebtwtikdzorgouxd.supabase.co`**,
+and fill it in. **`ledger_url` ships as `https://yheilbuunzdugfnermfb.supabase.co`**,
 the campaign ledger project, confirmed by Dovy on 2026-09-06 (schema
 `campaign`; the credential in `CREDENTIALS.md` §1 points at the same project).
 Every workflow that touches the ledger still runs a `Guard: ledger target` node
@@ -499,4 +499,4 @@ point: say so in a commit message and fix the builder.
 - `RUN-REPORT.md` — what shipped, what did not, and what Dovy has to do
 - `sql/004_consent.sql` — a proposed migration for the four missing columns,
   targeting the `campaign` schema of the confirmed ledger project
-  `oqpeebtwtikdzorgouxd`. **Not run. Not applied.** Dovy runs migrations, not n8n.
+  `yheilbuunzdugfnermfb`. **Not run. Not applied.** Dovy runs migrations, not n8n.

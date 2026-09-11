@@ -176,7 +176,7 @@ by how much they unblock.
 
 ### 4.1 Expose the `campaign` schema — one minute, unblocks everything
 
-Supabase dashboard → project **`oqpeebtwtikdzorgouxd`** → **Settings → API → Exposed schemas** →
+Supabase dashboard → project **`yheilbuunzdugfnermfb`** → **Settings → API → Exposed schemas** →
 add `campaign` → save.
 
 Until this is done, every ledger write from batches C, D, E and the Friday brief returns
@@ -184,7 +184,7 @@ Until this is done, every ledger write from batches C, D, E and the Friday brief
 
 ### 4.2 Run the migrations
 
-In the Supabase SQL editor, on project `oqpeebtwtikdzorgouxd`, in this order:
+In the Supabase SQL editor, on project `yheilbuunzdugfnermfb`, in this order:
 
 ```
 campaign-ledger/migrations/001_schema.sql
@@ -210,7 +210,7 @@ If you accept it, move it into `campaign-ledger/migrations/` as `004_` so it liv
 fill in:
 
 ```
-SUPABASE_URL=https://oqpeebtwtikdzorgouxd.supabase.co
+SUPABASE_URL=https://yheilbuunzdugfnermfb.supabase.co
 SUPABASE_SERVICE_KEY=<the service role key for THAT project>
 ```
 

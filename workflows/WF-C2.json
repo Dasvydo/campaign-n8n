@@ -40,7 +40,7 @@
             {
               "id": "cfg",
               "name": "cfg",
-              "value": "={{ {\n  ledger_url: 'https://oqpeebtwtikdzorgouxd.supabase.co',\n  dovy_email: 'hello@doviloop.dev',\n  from_email: 'dovy@doviloop.dev',\n  reply_to: 'hello@doviloop.dev',\n  data_dir: '/home/node/.n8n/campaign',\n  unsubscribe_base: '',\n  pricing_url: 'https://doviloop.dev/pricing',\n  postal_address: '',\n  dk_marketing_law_confirmed: false\n} }}",
+              "value": "={{ {\n  ledger_url: 'https://yheilbuunzdugfnermfb.supabase.co',\n  dovy_email: 'hello@doviloop.dev',\n  from_email: 'dovy@doviloop.dev',\n  reply_to: 'hello@doviloop.dev',\n  data_dir: '/home/node/.n8n/campaign',\n  unsubscribe_base: '',\n  pricing_url: 'https://doviloop.dev/pricing',\n  postal_address: '',\n  dk_marketing_law_confirmed: false\n} }}",
               "type": "object"
             }
           ]

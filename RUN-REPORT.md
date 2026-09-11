@@ -338,7 +338,7 @@ Stated plainly, because a QA gate that only lists passes is not a QA gate.
    its own file. Meta's IG reel flow, YouTube upload, LinkedIn posting and Stripe
    Checkout are written against documented shapes and have never seen a real
    response.
-6. **That `oqpeebtwtikdzorgouxd` is the right ledger project.** Batch B's own
+6. **That `yheilbuunzdugfnermfb` is the right ledger project.** Batch B's own
    migration header says it could not confirm this. Confirm in the dashboard.
 7. **Whether the ROI figures are real.** Only Dovy knows. That is why email 2
    ships without them.
@@ -487,9 +487,9 @@ errors on any of the five superseded values anywhere in an export, and
 asserts the null and the absence of superseded values in all six workflows.
 `README.md` states both under WF-C4.
 
-**4. Ledger project `oqpeebtwtikdzorgouxd` is confirmed.**
+**4. Ledger project `yheilbuunzdugfnermfb` is confirmed.**
 *Changed here:* `ledger_url` in all six Config nodes is pre-filled with
-`https://oqpeebtwtikdzorgouxd.supabase.co` instead of shipping blank; the
+`https://yheilbuunzdugfnermfb.supabase.co` instead of shipping blank; the
 Config node note and the guard's blank-URL message say so. The guard still
 throws on blank, non-https or the product ref `kngcxwcybozgqgnoweyt`.
 `CREDENTIALS.md` §1 names the project as confirmed. `README.md`'s import

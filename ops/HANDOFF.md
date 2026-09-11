@@ -136,7 +136,7 @@ Full commands and expected outputs in `ops/NEW-PC-SETUP.md` §4.
 
 1. **Supabase → Settings → API → Exposed schemas → add `campaign`.** One minute, and every ledger
    write in the campaign is behind it.
-2. Run `001_schema.sql` → `002_rls.sql` → `003_views.sql` against `oqpeebtwtikdzorgouxd`. Check the
+2. Run `001_schema.sql` → `002_rls.sql` → `003_views.sql` against `yheilbuunzdugfnermfb`. Check the
    project ref in the URL bar first — the migrations deliberately contain no reference to the
    product project, so nothing pasted from them can aim at it.
 3. Import the six workflows and create the seven credentials named in `CREDENTIALS.md`. They are

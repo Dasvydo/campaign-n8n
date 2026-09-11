@@ -12,8 +12,8 @@
 -- on, and (if he agrees) move into campaign-ledger/migrations/ as 004 before
 -- running it there with 001 to 003.
 --
--- TARGET PROJECT: the campaign ledger project oqpeebtwtikdzorgouxd, schema
--- `campaign`. Confirmed by Dovy on 2026-09-06. NEVER the product project
+-- TARGET PROJECT: the campaign ledger project yheilbuunzdugfnermfb, schema
+-- `campaign`. Project created 2026-09-10. NEVER the product project
 -- (kngcxwcybozgqgnoweyt).
 --
 -- Every statement is guarded so the file is re-runnable.
