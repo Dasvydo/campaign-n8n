@@ -468,6 +468,11 @@ WF-C4 has **two** Set nodes named `Config` and `Config approve`, one per
 entry path. They are byte-identical today. **Edit both, or the approval link
 path will run against stale values.**
 
+Since 2026-09-11 this is checked rather than merely advised: `validate.mjs`
+fails any workflow whose cfg-bearing Set nodes disagree, naming the key and
+both values. That protects the exports in this repo. **It cannot see edits you
+make in the n8n UI after import** — there, editing both is still on you.
+
 ```
 ig_user_id     ''   *** BLANK — Instagram Business Account ID ***
 fb_page_id     ''   *** BLANK ***
@@ -543,7 +548,8 @@ re-fetches the event over the authenticated API.
 **Config fields — two blanks that hard-block, in TWO Config nodes**
 
 WF-C5 has **two** Set nodes named `Config` and `Config webhook`, one per entry
-path, byte-identical today. **Edit both.**
+path, byte-identical today. **Edit both.** As with WF-C4, `validate.mjs` now
+fails the export if they diverge — but only the export, not the live instance.
 
 ```
 price_seat_monthly ''    *** BLANK — Stripe Price id, 89 USD/seat, recurring monthly ***

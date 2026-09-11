@@ -316,7 +316,7 @@ Nothing here needs a real credential. Run these in order.
 
 ```bash
 node tools/validate.mjs                     # all six files
-node tools/validate-selftest.mjs            # breaks a real export 15 ways, asserts each is caught (16 with the control)
+node tools/validate-selftest.mjs            # breaks real exports 18 ways, asserts each is caught (21 with 3 controls)
 node tools/check-sibling-invocations.mjs    # WF-C6's two cross-repo scripts still exist
 node tools/check-regen.mjs                  # the exports are byte-identical to what the builder emits
 ```

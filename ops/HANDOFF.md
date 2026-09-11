@@ -101,7 +101,7 @@ Two traps documented in the engine READMEs:
 | reel-engine | `PYTHONPATH=…/src python3 -m pytest tests/test_ledger_contract.py -q` | **8 passed** |
 | ad-engine | `python3 -m pytest tests/ -q` | **115 passed** (was 89) |
 | campaign-n8n | `node tools/validate.mjs` | 6 files, 157 nodes, **0 errors** |
-| campaign-n8n | `node tools/validate-selftest.mjs` | **16 passed, 0 failed** |
+| campaign-n8n | `node tools/validate-selftest.mjs` | **21 passed, 0 failed** |
 | campaign-n8n | `node test/run-code-nodes.mjs` | **135 passed, 0 failed** |
 | campaign-n8n | `node tools/check-sibling-invocations.mjs` | **2 verified** (new) |
 | campaign-n8n | `node tools/check-regen.mjs` | **6 exports match the builder** (new) |

@@ -147,15 +147,16 @@ No dependencies. Node only.
 ```bash
 cd ~/campaign/campaign-n8n
 node tools/validate.mjs                  # expect: 6 files, 157 nodes, 0 errors, 0 warnings
-node tools/validate-selftest.mjs         # expect: 16 passed, 0 failed
-node test/run-code-nodes.mjs             # expect: 135 passed, 0 failed
+node tools/validate-selftest.mjs         # expect: 21 passed, 0 failed
+node test/run-code-nodes.mjs             # expect: 141 passed, 0 failed
 node tools/check-sibling-invocations.mjs # expect: all 2 verified
 node tools/check-regen.mjs               # expect: 6 exports match the builder
 ```
 
-`validate-selftest.mjs` is the one to trust: it takes the real WF-C1 export, breaks it fifteen
+`validate-selftest.mjs` is the one to trust: it takes the real exports, breaks them eighteen
 ways, and asserts each break is caught. A validator that has never failed is indistinguishable
-from one that cannot fail.
+from one that cannot fail. The remaining three of the 21 are controls — WF-C1, WF-C4 and WF-C5
+unmodified must still pass, so a check can never be tightened into one that fires on real files.
 
 ### A — campaign-site
 

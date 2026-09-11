@@ -73,6 +73,39 @@ function walkStrings(value, path, fn) {
   }
 }
 
+// Split a cfg expression into its top-level "key: value" lines, keyed by key.
+// The builder writes one key per line at two-space indent. Anything that does
+// not match that shape is collected under the "" key and compared as one blob,
+// so a future multi-line value degrades into a blunt "they differ" rather than
+// a confidently wrong per-key answer.
+function cfgKeyLines(cfg) {
+  const map = new Map();
+  const rest = [];
+  for (const line of cfg.split('\n')) {
+    const m = /^ {2}([A-Za-z_][A-Za-z0-9_]*):\s*(.*?),?\s*$/.exec(line);
+    if (m) map.set(m[1], m[2]);
+    else rest.push(line.trim());
+  }
+  map.set('', rest.join(' '));
+  return map;
+}
+
+// Every Set node that assigns `cfg`. That is the structural definition of a
+// Config node here, rather than the name, so one renamed to something else
+// still gets checked.
+function cfgNodes(wf) {
+  return wf.nodes.filter(n =>
+    n.type === 'n8n-nodes-base.set' &&
+    n.parameters && n.parameters.assignments &&
+    Array.isArray(n.parameters.assignments.assignments) &&
+    n.parameters.assignments.assignments.some(a => a && a.name === 'cfg'));
+}
+
+function cfgValue(n) {
+  const a = n.parameters.assignments.assignments.find(x => x && x.name === 'cfg');
+  return typeof a.value === 'string' ? a.value : JSON.stringify(a.value);
+}
+
 function checkFile(file) {
   const errors = [];
   const warnings = [];
@@ -258,6 +291,45 @@ function checkFile(file) {
     }
     if (maxIdx >= declared) {
       errors.push(`merge node "${n.name}" declares ${declared} inputs but is wired to index ${maxIdx}`);
+    }
+  }
+
+  // ---- paired Config nodes must agree ------------------------------------
+  // WF-C4 and WF-C5 each carry two Config nodes, one per entry path:
+  // Config + "Config approve", and Config + "Config webhook". Every value in
+  // them has to be filled in twice - ig_user_id and fb_page_id on C4, the two
+  // Stripe Price ids on C5 - and filling one copy and not the other is
+  // invisible. The workflow imports, the canvas looks right, and the second
+  // entry path quietly runs on stale values. It surfaces only when somebody
+  // clicks an approval link, or a checkout is built from a blank Price id.
+  //
+  // So: more than one cfg-bearing Set node in a workflow means they must be
+  // identical. There is deliberately no allowance for a legitimate divergence.
+  // None exists in this campaign, and an invariant with an escape hatch is not
+  // an invariant - if two entry paths ever genuinely need different values,
+  // that is a second key inside one cfg, not a second cfg.
+  const cfgs = cfgNodes(wf);
+  if (cfgs.length > 1) {
+    const [first, ...rest] = cfgs;
+    const aLines = cfgKeyLines(cfgValue(first));
+    for (const other of rest) {
+      if (cfgValue(other) === cfgValue(first)) continue;
+      const bLines = cfgKeyLines(cfgValue(other));
+      const diffs = [];
+      for (const k of new Set([...aLines.keys(), ...bLines.keys()])) {
+        const a = aLines.get(k);
+        const b = bLines.get(k);
+        if (a === b) continue;
+        const label = k === '' ? 'structure outside the key lines' : k;
+        if (a === undefined) diffs.push(`${label}: only "${other.name}" has it`);
+        else if (b === undefined) diffs.push(`${label}: only "${first.name}" has it`);
+        else diffs.push(`${label}: "${first.name}" has ${JSON.stringify(a)}, "${other.name}" has ${JSON.stringify(b)}`);
+      }
+      const shown = diffs.slice(0, 6);
+      if (diffs.length > shown.length) shown.push(`and ${diffs.length - shown.length} more`);
+      errors.push(`Config nodes "${first.name}" and "${other.name}" disagree. ` +
+        `They are per-entry-path copies of one config and must be identical — ` +
+        shown.join('; '));
     }
   }
 

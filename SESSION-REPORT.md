@@ -82,6 +82,15 @@ Ordered by how much they would cost.
    is a silent half-configuration. Called out in the precheck document; not
    otherwise changed.
 
+   > **Update 2026-09-11.** "Nothing in the repo checks that they stay in sync"
+   > is no longer true. `validate.mjs` now fails any workflow whose cfg-bearing
+   > Set nodes disagree, and `validate-selftest.mjs` proves it on three
+   > deliberate breaks: a divergent value, a key present in only one copy, and
+   > a pair where one node has been renamed (they are found by shape — a Set
+   > node assigning `cfg` — not by being called "Config"). `approve_base`
+   > itself was fixed separately: it is now built from one constant in the
+   > builder, so the two copies cannot disagree in the first place.
+
 3. **WF-C6 needs two environment variables nobody has written down.**
    `README.md` names `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` for the n8n
    process environment. Read directly from the sibling checkouts,

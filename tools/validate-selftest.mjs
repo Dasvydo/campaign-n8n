@@ -3,7 +3,7 @@
  * Proves the validator is not just printing "ok".
  *
  * A validator that has never failed is indistinguishable from a validator that
- * cannot fail. This takes the real WF-C1 export, breaks it eleven different
+ * cannot fail. This takes the real WF-C1 export, breaks it in many different
  * ways in a scratch directory, and asserts that each break is caught with the
  * message it should produce.
  *
@@ -16,8 +16,11 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const base = JSON.parse(readFileSync(join(ROOT, 'workflows', 'WF-C1.json'), 'utf8'));
-const clone = () => JSON.parse(JSON.stringify(base));
+const load = f => JSON.parse(readFileSync(join(ROOT, 'workflows', f), 'utf8'));
+const base = load('WF-C1.json');
+// Most cases break WF-C1. The paired-Config cases need a workflow that HAS a
+// pair, so a case may name its own source file as a fourth element.
+const clone = (file) => JSON.parse(JSON.stringify(file ? load(file) : base));
 
 const CASES = [
   ['active: true is caught', w => { w.active = true; }, 'must be exactly false'],
@@ -58,7 +61,56 @@ const CASES = [
     w.connections = {};
   }, 'no trigger node'],
   ['unparseable JSON is caught', null, 'does not parse as JSON'],
+
+  // --- paired Config nodes. These need a workflow that has a pair, so they
+  // --- name their own source file rather than breaking WF-C1.
+  ['a divergent value between paired Config nodes is caught', w => {
+    const n = w.nodes.find(x => x.name === 'Config approve');
+    const a = n.parameters.assignments.assignments.find(x => x.name === 'cfg');
+    a.value = a.value.replace("ig_user_id: ''", "ig_user_id: '17841400000000000'");
+  }, 'Config nodes "Config" and "Config approve" disagree', 'WF-C4.json'],
+
+  ['a key missing from one copy of a paired Config is caught', w => {
+    const n = w.nodes.find(x => x.name === 'Config webhook');
+    const a = n.parameters.assignments.assignments.find(x => x.name === 'cfg');
+    a.value = a.value.replace(/\n {2}price_setup_once: '',?/, '');
+  }, 'only "Config" has it', 'WF-C5.json'],
+
+  ['a renamed Config node is still checked (the pair is found by shape)', w => {
+    const n = w.nodes.find(x => x.name === 'Config approve');
+    const a = n.parameters.assignments.assignments.find(x => x.name === 'cfg');
+    a.value = a.value.replace("fb_page_id: ''", "fb_page_id: '99'");
+    // Rename it and rewire, so only the cfg assignment identifies it.
+    const old = n.name;
+    n.name = 'Settings for the approve path';
+    w.connections[n.name] = w.connections[old];
+    delete w.connections[old];
+    for (const spec of Object.values(w.connections)) {
+      for (const outputs of Object.values(spec)) {
+        for (const targets of outputs || []) {
+          for (const t of targets || []) if (t && t.node === old) t.node = n.name;
+        }
+      }
+    }
+    for (const node of w.nodes) {
+      if (node.parameters && typeof node.parameters.jsCode === 'string') {
+        node.parameters.jsCode = node.parameters.jsCode.split(`$('${old}')`).join(`$('${n.name}')`);
+      }
+      walkReplace(node.parameters, old, n.name);
+    }
+  }, 'disagree', 'WF-C4.json'],
 ];
+
+// Rewrites $('Config approve') references inside plain expression strings too,
+// so the renamed-node case produces a workflow that is otherwise still valid
+// and the ONLY error is the one under test.
+function walkReplace(v, from, to) {
+  if (!v || typeof v !== 'object') return;
+  for (const [k, val] of Object.entries(v)) {
+    if (typeof val === 'string') v[k] = val.split(`$('${from}')`).join(`$('${to}')`);
+    else walkReplace(val, from, to);
+  }
+}
 
 const dir = mkdtempSync(join(tmpdir(), 'wfselftest-'));
 let pass = 0, fail = 0;
@@ -76,10 +128,10 @@ function runValidatorOn(fileContents) {
   }
 }
 
-for (const [label, mutate, expect] of CASES) {
+for (const [label, mutate, expect, srcFile] of CASES) {
   let contents;
   if (mutate === null) contents = '{ this is not json ';
-  else { const w = clone(); mutate(w); contents = JSON.stringify(w, null, 2); }
+  else { const w = clone(srcFile); mutate(w); contents = JSON.stringify(w, null, 2); }
 
   const out = runValidatorOn(contents);
   const caught = out.includes(expect);
@@ -94,10 +146,14 @@ for (const [label, mutate, expect] of CASES) {
   }
 }
 
-// And the control: the unmodified file must still pass.
-const out = runValidatorOn(JSON.stringify(base, null, 2));
-if (/0 error\(s\)/.test(out)) { console.log('  PASS  the unmodified export still passes'); pass++; }
-else { console.log('  FAIL  the unmodified export no longer passes'); console.log(out); fail++; }
+// And the controls: the unmodified files must still pass. WF-C4 and WF-C5 are
+// here because they are the two that carry a Config pair - a sync check that
+// fires on the real exports would be worse than no check at all.
+for (const f of ['WF-C1.json', 'WF-C4.json', 'WF-C5.json']) {
+  const out = runValidatorOn(JSON.stringify(load(f), null, 2));
+  if (/0 error\(s\)/.test(out)) { console.log(`  PASS  unmodified ${f} still passes`); pass++; }
+  else { console.log(`  FAIL  unmodified ${f} no longer passes`); console.log(out); fail++; }
+}
 
 rmSync(dir, { recursive: true, force: true });
 console.log(`\nvalidator self-test: ${pass} passed, ${fail} failed`);

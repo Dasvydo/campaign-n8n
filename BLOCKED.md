@@ -254,8 +254,8 @@ LinkedIn posted by hand for the two localized reels a week.
 - No Buffer, Meta, YouTube, LinkedIn, Stripe or SMTP credential exists here.
 
 **What Batch F did instead of pretending:** wrote `tools/validate.mjs`, proved
-it catches real breakage with `tools/validate-selftest.mjs` (15 deliberate
-breaks, all caught), and wrote `test/run-code-nodes.mjs`, which executes the
+it catches real breakage with `tools/validate-selftest.mjs` (18 deliberate
+breaks, all caught, plus 3 controls), and wrote `test/run-code-nodes.mjs`, which executes the
 actual Code node bodies read out of the exported JSON against the real sample
 payloads. 130 assertions pass. What that does and does not prove is stated
 honestly in `RUN-REPORT.md`.

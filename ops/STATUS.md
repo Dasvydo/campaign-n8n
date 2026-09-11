@@ -67,7 +67,7 @@ problem, but a different one, and exactly what would have bitten you on the new 
 | ad-engine | `python3 -m pytest tests/ -q` | **89 passed** (needs `Pillow` + `pytest`) |
 | reel-engine | `python3 -m pytest -q -m "not slow and not network"` | **441 passed** |
 | campaign-n8n | `node tools/validate.mjs` | 6 files, 157 nodes, **0 errors** |
-| campaign-n8n | `node tools/validate-selftest.mjs` | **16 passed, 0 failed** |
+| campaign-n8n | `node tools/validate-selftest.mjs` | **21 passed, 0 failed** |
 | campaign-n8n | `node test/run-code-nodes.mjs` | **135 passed, 0 failed** |
 | campaign-site | `npm run verify:payload` | **cannot run here** — `node_modules` absent |
 
