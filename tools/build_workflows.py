@@ -917,8 +917,13 @@ def build_c1():
 # ===========================================================================
 
 C2_CONFIG = (
+    # No ledger_url, deliberately. C2 is the only workflow that never reaches
+    # the ledger - it sends mail and nothing else, holds no Supabase
+    # credential, and therefore carries no "Guard: ledger target" node. It
+    # used to declare ledger_url anyway, unused, which made it look like a
+    # workflow that talks to the ledger and had lost its guard. Do not copy
+    # the key back in from the other five configs.
     "={{ {\n"
-    "  ledger_url: 'https://yheilbuunzdugfnermfb.supabase.co',\n"
     "  dovy_email: 'hello@doviloop.dev',\n"
     "  from_email: '" + SENDER_EMAIL + "',\n"
     "  reply_to: 'hello@doviloop.dev',\n"

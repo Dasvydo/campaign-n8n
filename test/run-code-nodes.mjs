@@ -248,8 +248,8 @@ check('a gmail_on_request lead gets the Gmail note in the body',
 section('WF-C2 · the consent gate is the legal control, so it is tested hardest');
 
 const c2 = payloads.wf_c2_nurture;
-const CFG_C2 = { ledger_url: 'https://yheilbuunzdugfnermfb.supabase.co',
-                 dovy_email: 'hello@doviloop.dev', from_email: 'dovy@doviloop.dev',
+// No ledger_url: C2 does not reach the ledger and no longer declares one.
+const CFG_C2 = { dovy_email: 'hello@doviloop.dev', from_email: 'dovy@doviloop.dev',
                  unsubscribe_base: 'https://n8n.example/webhook/campaign/unsubscribe',
                  pricing_url: 'https://doviloop.dev/pricing',
                  postal_address: 'DoviLoop, Copenhagen',
