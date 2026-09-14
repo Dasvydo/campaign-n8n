@@ -119,8 +119,12 @@ Everything else can wait until the account it belongs to exists.
   C2 has no guard and needs none: it never touches the ledger.
   Do not remove those nodes.
 - **`data_dir` must exist and be writable by the n8n process.** All six Config
-  nodes ship `data_dir: '/home/node/.n8n/campaign'`, and eight append-only
-  files are written under it. This directory is not created by the import:
+  nodes ship `data_dir: '/home/node/.n8n-files/campaign'`, and eight
+  append-only files are written under it. This directory is not created by the
+  import, and the parent matters: n8n refuses any file outside its allow list,
+  which on this instance is `/home/node/.n8n-files`. A `data_dir` outside that
+  fails on every write, silently, because every append node is
+  `onError: continueRegularOutput`:
 
   | File | Written by | What is lost if the path is not writable |
   |---|---|---|
@@ -200,7 +204,7 @@ Everything else can wait until the account it belongs to exists.
 ledger_url        'https://yheilbuunzdugfnermfb.supabase.co'   confirm: campaign, not product
 dovy_email        'hello@doviloop.dev'                          confirm: accepts mail
 from_email        'dovyvini@doviloop.dev'                       the SMTP account itself
-data_dir          '/home/node/.n8n/campaign'                    confirm: exists, writable
+data_dir          '/home/node/.n8n-files/campaign'             confirm: exists, writable
 dedupe_ttl_hours  72                                            prefilled
 ```
 

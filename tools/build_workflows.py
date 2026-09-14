@@ -64,6 +64,26 @@ CAMPAIGN_SITE_URL = "https://campaign-site-azure.vercel.app"
 # they should look unrunnable rather than half-configured.
 FB_PAGE_ID = "1294387330427112"
 
+# Where the workflows append their JSONL journals.
+#
+# This is NOT a free choice. The instance runs with n8n's file-access allow
+# list set to /home/node/.n8n-files, and readWriteFile refuses anything
+# outside it - verified 2026-09-14, the node answers
+#   "Access to the file is not allowed. Allowed paths: /home/node/.n8n-files"
+#
+# The old value, /home/node/.n8n/campaign, sat OUTSIDE that allow list. So the
+# long-standing plan to fix the journals by creating that directory would not
+# have worked: the directory would have existed and every write would still
+# have been refused. Worse, every append node is onError:continueRegularOutput,
+# so the refusal is silent - opt-outs and content approvals would have gone on
+# vanishing with the directory sitting right there looking correct.
+#
+# The subdirectory still has to exist; nothing here creates it. But now the
+# mkdir lands somewhere the writes are actually permitted:
+#   docker exec -u root <n8n> sh -c 'mkdir -p /home/node/.n8n-files/campaign \
+#     && chown node:node /home/node/.n8n-files/campaign'
+DATA_DIR = "/home/node/.n8n-files/campaign"
+
 # Deterministic node IDs: same input, same file, so a rebuild is a clean diff.
 _NS = uuid.UUID("6f1a5b2c-9d3e-4a71-8c52-0e7b4d9a1f60")
 
@@ -339,7 +359,7 @@ C1_CONFIG = (
     "  ledger_url: 'https://yheilbuunzdugfnermfb.supabase.co',\n"
     "  dovy_email: 'hello@doviloop.dev',\n"
     "  from_email: '" + SENDER_EMAIL + "',\n"
-    "  data_dir: '/home/node/.n8n/campaign',\n"
+    "  data_dir: '" + DATA_DIR + "',\n"
     "  dedupe_ttl_hours: 72\n"
     "} }}"
 )
@@ -902,7 +922,7 @@ C2_CONFIG = (
     "  dovy_email: 'hello@doviloop.dev',\n"
     "  from_email: '" + SENDER_EMAIL + "',\n"
     "  reply_to: 'hello@doviloop.dev',\n"
-    "  data_dir: '/home/node/.n8n/campaign',\n"
+    "  data_dir: '" + DATA_DIR + "',\n"
     "  unsubscribe_base: '" + N8N_WEBHOOK_BASE + "/campaign/unsubscribe',\n"
     "  site_host: '" + CAMPAIGN_SITE_URL.split('://')[1] + "',\n"
     "  pricing_url: 'https://doviloop.dev/pricing',\n"
@@ -1414,7 +1434,7 @@ C3_CONFIG = (
     "  ledger_url: 'https://yheilbuunzdugfnermfb.supabase.co',\n"
     "  dovy_email: 'hello@doviloop.dev',\n"
     "  from_email: '" + SENDER_EMAIL + "',\n"
-    "  data_dir: '/home/node/.n8n/campaign',\n"
+    "  data_dir: '" + DATA_DIR + "',\n"
     "  publisher: 'direct',\n"
     "  buffer_api_url: 'https://graph.buffer.com/',\n"
     "  buffer_channels: { instagram: '', facebook: '', youtube_shorts: '', linkedin: '' },\n"
@@ -2136,7 +2156,7 @@ C4_CONFIG = (
     "  ledger_url: 'https://yheilbuunzdugfnermfb.supabase.co',\n"
     "  dovy_email: 'hello@doviloop.dev',\n"
     "  from_email: '" + SENDER_EMAIL + "',\n"
-    "  data_dir: '/home/node/.n8n/campaign',\n"
+    "  data_dir: '" + DATA_DIR + "',\n"
     "  meta_graph_version: 'v21.0',\n"
     "  ig_user_id: '',\n"
     "  fb_page_id: '" + FB_PAGE_ID + "',\n"
@@ -2640,7 +2660,7 @@ C5_CONFIG = (
     "  ledger_url: 'https://yheilbuunzdugfnermfb.supabase.co',\n"
     "  dovy_email: 'hello@doviloop.dev',\n"
     "  from_email: '" + SENDER_EMAIL + "',\n"
-    "  data_dir: '/home/node/.n8n/campaign',\n"
+    "  data_dir: '" + DATA_DIR + "',\n"
     "  stripe_api: 'https://api.stripe.com/v1',\n"
     "  price_seat_monthly: '',\n"
     "  price_setup_once: '',\n"
@@ -3115,7 +3135,7 @@ C6_CONFIG = (
     "  ledger_url: 'https://yheilbuunzdugfnermfb.supabase.co',\n"
     "  dovy_email: 'hello@doviloop.dev',\n"
     "  from_email: '" + SENDER_EMAIL + "',\n"
-    "  data_dir: '/home/node/.n8n/campaign',\n"
+    "  data_dir: '" + DATA_DIR + "',\n"
     "  python_bin: 'python3',\n"
     "  ledger_repo: '/opt/campaign/campaign-ledger',\n"
     "  ad_engine_repo: '/opt/campaign/ad-engine',\n"

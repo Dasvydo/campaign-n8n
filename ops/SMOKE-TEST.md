@@ -100,8 +100,11 @@ expects, would remove the need for this dance entirely.
 ## What this does NOT prove
 
 - The `too_small` branch, the nurture enrolment, and every JSONL append are
-  still unexercised. They are the paths that need
-  `/home/node/.n8n/campaign` to exist, and it still does not.
+  still unexercised. Those are the paths that need `data_dir` to exist and be
+  writable. Superseded 2026-09-14: `data_dir` moved to
+  `/home/node/.n8n-files/campaign`, because the old path was outside this
+  instance's file-access allow list and no `mkdir` would have made it
+  writable. See `ops/INSTANCE.md`.
 - WF-C2 through WF-C6 have never executed.
 - Dedupe was not tested: `deduped:false` on a first insert says only that this
   key was new. Sending the same payload twice would test it, and would not cost

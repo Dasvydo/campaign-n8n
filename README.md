@@ -473,8 +473,13 @@ workflow shows exactly where they differ.
 
 ## Files this repo writes at runtime
 
-All under WF-C1's `cfg.data_dir` (default `/home/node/.n8n/campaign`). Make sure
-that directory exists and n8n can write to it.
+All under WF-C1's `cfg.data_dir` (default `/home/node/.n8n-files/campaign`).
+Make sure that directory exists and n8n can write to it.
+
+The path is inside `/home/node/.n8n-files` because that is what this instance's
+file-access allow list permits; a write anywhere else is refused, silently,
+because every append node is `onError: continueRegularOutput`. See
+`ops/INSTANCE.md`.
 
 | File | Written by | What it is |
 |---|---|---|
