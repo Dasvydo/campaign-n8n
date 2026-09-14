@@ -22,6 +22,16 @@ const base = load('WF-C1.json');
 // pair, so a case may name its own source file as a fourth element.
 const clone = (file) => JSON.parse(JSON.stringify(file ? load(file) : base));
 
+// A self-test whose mutation does not actually change anything is worse than a
+// failing one: it asserts nothing while still reporting PASS, until some
+// unrelated edit makes the mismatch visible. Every fixture mutation goes
+// through here so it fails loudly at the point of the mistake instead.
+function mustReplace(text, pattern, replacement) {
+  const out = text.replace(pattern, replacement);
+  if (out === text) throw new Error(`self-test fixture is stale: ${pattern} matched nothing`);
+  return out;
+}
+
 const CASES = [
   ['active: true is caught', w => { w.active = true; }, 'must be exactly false'],
   ['a top-level id is caught', w => { w.id = 'Ju1nxQJw6R4mygdt'; }, 'top-level "id"'],
@@ -67,7 +77,7 @@ const CASES = [
   ['a divergent value between paired Config nodes is caught', w => {
     const n = w.nodes.find(x => x.name === 'Config approve');
     const a = n.parameters.assignments.assignments.find(x => x.name === 'cfg');
-    a.value = a.value.replace("ig_user_id: ''", "ig_user_id: '17841400000000000'");
+    a.value = mustReplace(a.value, /ig_user_id: '[^']*'/, "ig_user_id: '17841400000000000'");
   }, 'Config nodes "Config" and "Config approve" disagree', 'WF-C4.json'],
 
   ['a key missing from one copy of a paired Config is caught', w => {
@@ -79,7 +89,13 @@ const CASES = [
   ['a renamed Config node is still checked (the pair is found by shape)', w => {
     const n = w.nodes.find(x => x.name === 'Config approve');
     const a = n.parameters.assignments.assignments.find(x => x.name === 'cfg');
-    a.value = a.value.replace("fb_page_id: ''", "fb_page_id: '99'");
+    // Match whatever fb_page_id currently holds. This used to pin the literal
+    // empty string, so the day fb_page_id was actually filled in the replace
+    // became a silent no-op: no divergence was introduced, the validator
+    // correctly found nothing, and the test failed for a reason that had
+    // nothing to do with what it was testing. mustReplace makes that
+    // impossible - a mutation that does not bite is now a loud error.
+    a.value = mustReplace(a.value, /fb_page_id: '[^']*'/, "fb_page_id: '99'");
     // Rename it and rewire, so only the cfg assignment identifies it.
     const old = n.name;
     n.name = 'Settings for the approve path';

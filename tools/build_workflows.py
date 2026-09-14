@@ -53,6 +53,17 @@ SENDER_EMAIL = "dovyvini@doviloop.dev"
 # on it. Verified live 2026-09-14. One constant so the next move is one edit.
 CAMPAIGN_SITE_URL = "https://campaign-site-azure.vercel.app"
 
+# The Facebook Page the campaign posts to and replies from, verified against
+# the live Graph API with the page token in credential "Meta Graph API page
+# token". WF-C3 posts to it; WF-C4 builds the private-reply URL on it as
+# graph.facebook.com/<version>/<fb_page_id>/messages, so a blank value there
+# is not an empty setting, it is a malformed URL.
+#
+# There is NO Instagram account, so ig_user_id stays empty on purpose in both
+# workflows. C3's Instagram branch and C4's Instagram reply cannot run, and
+# they should look unrunnable rather than half-configured.
+FB_PAGE_ID = "1294387330427112"
+
 # Deterministic node IDs: same input, same file, so a rebuild is a clean diff.
 _NS = uuid.UUID("6f1a5b2c-9d3e-4a71-8c52-0e7b4d9a1f60")
 
@@ -1409,7 +1420,7 @@ C3_CONFIG = (
     "  buffer_channels: { instagram: '', facebook: '', youtube_shorts: '', linkedin: '' },\n"
     "  meta_graph_version: 'v21.0',\n"
     "  ig_user_id: '',\n"
-    "  fb_page_id: '1294387330427112',\n"
+    "  fb_page_id: '" + FB_PAGE_ID + "',\n"
     "  asset_base_url: ''\n"
     "} }}"
 )
@@ -2128,7 +2139,7 @@ C4_CONFIG = (
     "  data_dir: '/home/node/.n8n/campaign',\n"
     "  meta_graph_version: 'v21.0',\n"
     "  ig_user_id: '',\n"
-    "  fb_page_id: '',\n"
+    "  fb_page_id: '" + FB_PAGE_ID + "',\n"
     "  landing_url: '" + CAMPAIGN_SITE_URL + "',\n"
     "  keywords: ['draft', 'drafts', 'demo', 'outlook', 'info'],\n"
     "  rate_limit_days: 90,\n"
