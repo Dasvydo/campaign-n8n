@@ -150,7 +150,7 @@ into a node parameter.
 
 - **Host / URL:** `https://yheilbuunzdugfnermfb.supabase.co`, the CAMPAIGN
   ledger project. **Confirmed by Dovy on 2026-09-06.** The same URL is
-  pre-filled as `ledger_url` in every Config node, and `sql/004_consent.sql`
+  pre-filled as `ledger_url` in every Config node, and `campaign-ledger/migrations/004_consent.sql`
   targets this project's `campaign` schema.
 - **Service Role Secret:** Project Settings → API → `service_role` key.
 

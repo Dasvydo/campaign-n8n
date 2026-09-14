@@ -200,7 +200,7 @@ files are safe to re-run.
 the product database. The migrations deliberately do not contain that string anywhere, so nothing
 you paste from them can aim at it.
 
-There is a fourth, **proposed** migration at `campaign-n8n/sql/004_consent.sql`. It is marked
+There is a fourth, **proposed** migration at `campaign-ledger/migrations/004_consent.sql`. It is marked
 `STATUS: NOT RUN. NOT APPLIED.` and adds a consent record, a `leads.opt_out` column, a
 `content.approved_at` column, and a `social_touches` table. Read its reasoning before deciding.
 If you accept it, move it into `campaign-ledger/migrations/` as `004_` so it lives with the others.

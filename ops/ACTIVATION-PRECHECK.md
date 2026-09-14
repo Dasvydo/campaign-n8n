@@ -591,7 +591,7 @@ session moves no money and emails nobody.
 
 ## What this document does not cover
 
-- **`sql/004_consent.sql` is NOT RUN and NOT APPLIED**, deliberately. Where it
+- **`campaign-ledger/migrations/004_consent.sql` is NOT RUN and NOT APPLIED**, deliberately. Where it
   should live is parked decision **P-3**. Dovy runs migrations, not n8n.
 - Six decisions **P-1 … P-6** are parked in `ops/DECISIONS.md` for the founder.
   None was acted on here.

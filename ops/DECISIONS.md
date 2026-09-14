@@ -16,7 +16,7 @@ touched a `campaign/*` branch, `main`, a database, or any live service.
 **Why:** they have to live in a repo or they die with the container, and there is no
 `campaign-specs` repository. `campaign-n8n` is the integration repo and already carries
 campaign-wide material — `CREDENTIALS.md` covers all seven credentials for the whole campaign, and
-`sql/004_consent.sql` is a proposed migration *for a different repo*. The precedent is established.
+`campaign-ledger/migrations/004_consent.sql` is a proposed migration *for a different repo*. The precedent is established.
 
 **Reverse:** they are plain markdown with no inbound links from code. `git mv` them anywhere.
 
@@ -139,7 +139,7 @@ Batch A's 1-9 result screen offers "Send me the three emails" as a **`mailto:`**
 five `optin.*` fields it has no automated way of receiving, and Dovy starts the nurture by hand.
 
 Batch F costs the fix at ~15 minutes: change the button to POST at `campaign/nurture-optin` with the
-same five fields, and run `sql/004_consent.sql` so the consent record lives in the ledger.
+same five fields, and run `campaign-ledger/migrations/004_consent.sql` so the consent record lives in the ledger.
 
 **Why this was not done autonomously:** it changes the shared contract, adds a webhook path, and
 depends on a migration that only Dovy runs. It is also the one place where the campaign deliberately
@@ -300,9 +300,24 @@ verified by Meta's own challenge handshake.
 
 ---
 
-### P-3 — Where `sql/004_consent.sql` should live
+### P-3 — Where `campaign-ledger/migrations/004_consent.sql` should live — **RESOLVED 2026-09-14**
 
-It is a migration for `campaign-ledger` that sits in `campaign-n8n`, because batch F may not write
-to a sibling repo. It is marked `STATUS: NOT RUN. NOT APPLIED.` If Dovy accepts it, it should move
-to `campaign-ledger/migrations/004_consent.sql` and run in sequence after 003. That is his call
-because running it is his action.
+It was a migration for `campaign-ledger` that sat in `campaign-n8n`, because batch F may not write
+to a sibling repo.
+
+**Dovy's decision, 2026-09-14: move it.** It now lives at
+`campaign-ledger/migrations/004_consent.sql` and runs in sequence after 003. It is still marked
+`STATUS: NOT RUN. NOT APPLIED.` — moving it was a filing decision, not an approval to run it.
+Running it remains Dovy's action, and nothing in the campaign applies a migration.
+
+Two things had to change on the way in, and neither was cosmetic:
+
+- The header named the product project ref. `001` to `003` deliberately never write that ref in a
+  `.sql` file, because a migration exists to be pasted into a SQL editor and the safest text to
+  paste is text that cannot aim at the wrong database. `campaign-ledger/tests/run_local_proof.py`
+  asserts this across every `.sql` file under the repo root, so an unedited move would have failed
+  that repo's gate. The warning survives; the ref does not.
+- Its `consent_source` example described opting in on `teams.doviloop.dev`, which does not resolve.
+
+`campaign-n8n/sql/` is now gone. Dated reports in this repo still cite the old path; they are
+records of what was true when they were written and have deliberately not been rewritten.

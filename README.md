@@ -66,7 +66,7 @@ marketing email to someone who never agreed on the record.
 
 To make it automatic: change Batch A's opt-in button from a mailto to a POST at
 `campaign/nurture-optin` carrying those five fields, and run
-`sql/004_consent.sql` so the consent record lives in the ledger. About 15
+`campaign-ledger/migrations/004_consent.sql` so the consent record lives in the ledger. About 15
 minutes of Dovy's time. Logged as F-4 in `BLOCKED.md`.
 
 ---
@@ -250,7 +250,7 @@ curl -X POST "$N8N/webhook/campaign/content-approve" \
 ```
 
 `{"natural_keys":[...]}` approves several. `{"natural_key":"...","revoke":true}`
-takes one back. `sql/004_consent.sql` §2 proposes the column that would move
+takes one back. `campaign-ledger/migrations/004_consent.sql` §2 proposes the column that would move
 this into the ledger.
 
 ## What WF-C5 can and cannot do
@@ -513,6 +513,6 @@ point: say so in a commit message and fix the builder.
 - `BLOCKED.md` — twelve items, what each blocks, what it costs
 - `CREDENTIALS.md` — seven credentials, where each comes from
 - `RUN-REPORT.md` — what shipped, what did not, and what Dovy has to do
-- `sql/004_consent.sql` — a proposed migration for the four missing columns,
+- `campaign-ledger/migrations/004_consent.sql` — a proposed migration for the four missing columns,
   targeting the `campaign` schema of the confirmed ledger project
   `yheilbuunzdugfnermfb`. **Not run. Not applied.** Dovy runs migrations, not n8n.

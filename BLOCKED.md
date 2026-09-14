@@ -63,7 +63,7 @@ lead lands in `parked-under-10.jsonl` and Dovy starts WF-C2 by hand off the
 mailto in his inbox.
 **Dovy: 15 minutes** to make it automatic, if he wants it: change A's opt-in
 button from a mailto to a POST at `campaign/nurture-optin` carrying the same
-five fields, and run `sql/004_consent.sql` so the consent record lives in the
+five fields, and run `campaign-ledger/migrations/004_consent.sql` so the consent record lives in the
 ledger instead of in a hand-written payload.
 
 ## F-6. `campaign.leads` has no `opt_out` column, so the unsubscribe list lives in n8n
@@ -79,7 +79,7 @@ data (which is what actually stops the next email), an append-only
 **Blocks:** nothing today. The unsubscribe works.
 **Costs if ignored:** n8n static data does not survive an instance rebuild or a
 workflow delete-and-reimport. If that happens, the suppression list is gone and
-the JSONL file is the only record. Proposed fix in `sql/004_consent.sql` §1.
+the JSONL file is the only record. Proposed fix in `campaign-ledger/migrations/004_consent.sql` §1.
 
 ## F-7. `campaign.touches` cannot hold a social DM, for two independent reasons
 
@@ -99,7 +99,7 @@ the JSONL file is the only record. Proposed fix in `sql/004_consent.sql` §1.
 **What Batch F did:** journalled to `social-dm-touches.jsonl` in the exact shape
 a future insert would take, with both reasons recorded in every line. Nothing
 fabricated into the ledger.
-**Proposed fix:** `sql/004_consent.sql` §3 adds a `campaign.social_touches`
+**Proposed fix:** `campaign-ledger/migrations/004_consent.sql` §3 adds a `campaign.social_touches`
 table rather than bending `touches`, and explains why extending the enum was
 rejected.
 
@@ -132,7 +132,7 @@ table the Friday brief adds up.
 **Cost:** until a rate is set, converted pilots show in `v_market_funnel` and
 `v_channel_funnel` with 0 revenue.
 **Dovy: 1 minute.** Set `usd_eur_rate` in WF-C5's Config, ideally to the rate
-Stripe settles at rather than a mid-market rate. `sql/004_consent.sql` §4
+Stripe settles at rather than a mid-market rate. `campaign-ledger/migrations/004_consent.sql` §4
 proposes storing `mrr_usd` and the rate used so the euro figure is auditable.
 
 ## F-2. The existing workflow set is not present, so numbering cannot be verified

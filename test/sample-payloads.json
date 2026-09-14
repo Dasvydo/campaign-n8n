@@ -159,7 +159,7 @@
         },
         "optin": {
           "granted": true,
-          "source": "pressed 'Send me the three emails' on teams.doviloop.dev and replied to the mailto",
+          "source": "pressed 'Send me the three emails' on campaign-site-azure.vercel.app and replied to the mailto",
           "evidence": "Gmail thread 18f31a7c55d9002b, screenshot in Drive/DoviLoop Ops/optins/",
           "recorded_at": "2026-09-20T09:00:00.000Z",
           "work_email": "jo@twodeskbooks.example"
