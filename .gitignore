@@ -31,3 +31,6 @@ venv/
 *.swp
 .idea/
 .vscode/
+
+# Credential ids: instance-specific, and this repo is public.
+ops/credential-ids.local.json
