@@ -126,16 +126,35 @@ Everything else can wait until the account it belongs to exists.
   fails on every write, silently, because every append node is
   `onError: continueRegularOutput`:
 
+  All nine file nodes across the six workflows are **writes**. Nothing reads
+  them back - verified 2026-09-14 by listing every `readWriteFile` and
+  `extractFromFile` node in the exports. They are durable audit trails beside
+  the live mechanism, not the live mechanism itself:
+
   | File | Written by | What is lost if the path is not writable |
   |---|---|---|
-  | `dead-letter.jsonl` | C1 | failed ledger writes |
-  | `parked-under-10.jsonl` | C1 | under-10-seat leads |
-  | `opt-outs.jsonl` | C2 | **the suppression list** |
-  | `nurture-parked.jsonl` | C2 | leads held for missing consent |
-  | `content-approvals.jsonl` | C3 | **the approval list WF-C3 publishes from** |
-  | `dm-drafts.jsonl` | C4 | pending DM drafts |
-  | `social-dm-touches.jsonl` | C4 | the 90-day per-person rate limit |
-  | `day14-links.jsonl` | C5 | the checkout links created for Dovy |
+  | `dead-letter.jsonl` | C1 | the record of failed ledger writes |
+  | `parked-under-10.jsonl` | C1 | the record of under-10-seat leads |
+  | `opt-outs.jsonl` | C2 | the durable record of opt-outs |
+  | `nurture-parked.jsonl` | C2 | the record of leads held for missing consent |
+  | `content-approvals.jsonl` | C3 | the record of what was approved |
+  | `dm-drafts.jsonl` | C4 | the record of pending DM drafts |
+  | `social-dm-touches.jsonl` | C4 | the record of DMs sent |
+  | `day14-links.jsonl` | C5 | the record of checkout links created |
+
+  **Two earlier claims about this table were wrong and are withdrawn.**
+  `content-approvals.jsonl` was described as "the approval list WF-C3
+  publishes from". It is not: C3 selects work with
+  `GET /rest/v1/content?published_at=is.null` against the **ledger**, and
+  appends to the JSONL as a record afterwards. Losing the file loses the audit
+  trail, not the ability to publish. Likewise `opt-outs.jsonl` is not the
+  suppression list C2 consults - suppression runs on workflow static data,
+  which n8n persists in its own database - and `social-dm-touches.jsonl` is not
+  the rate limit, which is also static data. The files still matter, because an
+  audit trail you cannot produce is the same as no audit trail, and static data
+  does not survive an instance rebuild. But nothing stops working the moment
+  they are missing, which is a different and lesser failure than the one this
+  table used to describe.
 - **Timezone.** All six exports set `settings.timezone: "Europe/Copenhagen"`.
   Every cron below is wall-clock in Copenhagen (CET/CEST), so the UTC offset
   moves with DST.

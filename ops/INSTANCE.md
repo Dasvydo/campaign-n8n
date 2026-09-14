@@ -117,3 +117,39 @@ would block anything else that shells out.
 Neither limit is a defect to work around quietly. Both are the instance being
 locked down, which is the right default for a box that also runs the product
 automations.
+
+## Queue mode: two containers, separate volumes
+
+Measured on the host 2026-09-14. The instance runs n8n 2.2.1 in **queue mode**:
+
+```
+app-n8n-1           serves the UI and webhooks
+app-n8n-worker-1    executes workflows
+```
+
+`/home/node/.n8n-files/campaign` now exists and is writable by `node` in both.
+They do **not** share storage - a file written in the worker is not visible
+from the main container (tested by writing in one and reading from the other).
+
+What that means, stated carefully, because the first reading of it was too
+alarming:
+
+- Executions run on the worker, so **all nine JSONL journals accumulate in the
+  worker's volume only**. The main container's copy stays empty forever. If you
+  go looking for opt-outs.jsonl by exec-ing into `app-n8n-1`, you will find
+  nothing and it will look like the writes are still failing. They are not;
+  you are in the wrong container.
+- Nothing reads these files, so nothing behaves incorrectly today. Suppression
+  and the DM rate limit run on workflow static data, which n8n persists in its
+  shared database, not on the files.
+- It breaks properly if a **second worker** is ever added: the journals then
+  fragment across workers, with no single complete copy of anything.
+- Whether a journal survives a container rebuild depends on whether the
+  worker's volume is named or anonymous. Worth checking before any Elestio
+  redeploy, because an anonymous volume is discarded on recreation.
+
+The durable fix is one bind mount into both services at
+`/home/node/.n8n-files/campaign`, pointing at a single host directory. That
+puts every journal in one place, visible from the host without exec-ing into
+anything, and independent of container lifecycle. It needs a compose edit and a
+recreate, so it is Dovy's call and not urgent while there is one worker.
