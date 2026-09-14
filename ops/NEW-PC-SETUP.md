@@ -45,7 +45,7 @@ You should end up with:
 
 ```
 ~/campaign/
-  campaign-site/       batch A   landing page, teams.doviloop.dev
+  campaign-site/       batch A   landing page, campaign-site-azure.vercel.app
   campaign-ledger/     batch B   Postgres schema + PostgREST client + Friday brief
   outreach-engine/     batch C   cold outreach: registry -> enrich -> gate -> sequence -> export
   reel-engine/         batch D   content engine: scripts, render, captions, publish

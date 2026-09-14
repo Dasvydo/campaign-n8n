@@ -46,6 +46,13 @@ N8N_WEBHOOK_BASE = "https://viniflow-u57383.vm.elestio.app/webhook"
 # back here - nothing else needs to change.
 SENDER_EMAIL = "dovyvini@doviloop.dev"
 
+# Where the campaign actually lives. teams.doviloop.dev was never registered -
+# batch A deployed to Vercel instead - so every string that named it was wrong
+# the moment it was written: C2's nurture footer told a real lead they had
+# filled in a form on a domain that does not resolve, and C4 built its DM link
+# on it. Verified live 2026-09-14. One constant so the next move is one edit.
+CAMPAIGN_SITE_URL = "https://campaign-site-azure.vercel.app"
+
 # Deterministic node IDs: same input, same file, so a rebuild is a clean diff.
 _NS = uuid.UUID("6f1a5b2c-9d3e-4a71-8c52-0e7b4d9a1f60")
 
@@ -740,7 +747,7 @@ return out;
 
 
 def build_c1():
-    w = WF("WF-C1", "WF-C1 — Qualifier intake (teams.doviloop.dev)",
+    w = WF("WF-C1", "WF-C1 — Qualifier intake (campaign-site-azure.vercel.app)",
            "Webhook from Batch A's qualifier. Validates, dedupes twice, writes "
            "campaign.leads, notifies Dovy, and never loses a lead.")
 
@@ -886,6 +893,7 @@ C2_CONFIG = (
     "  reply_to: 'hello@doviloop.dev',\n"
     "  data_dir: '/home/node/.n8n/campaign',\n"
     "  unsubscribe_base: '" + N8N_WEBHOOK_BASE + "/campaign/unsubscribe',\n"
+    "  site_host: '" + CAMPAIGN_SITE_URL.split('://')[1] + "',\n"
     "  pricing_url: 'https://doviloop.dev/pricing',\n"
     "  postal_address: 'DoviLoop O\u00dc, Sepapaja 6, 15551 Tallinn, Estonia',\n"
     "  dk_marketing_law_confirmed: false\n"
@@ -1116,7 +1124,8 @@ for (const item of $input.all()) {
   const foot =
     '<hr style="border:none;border-top:1px solid #e5e5e5;margin:26px 0">' +
     '<p style="font-size:12px;color:#777;line-height:1.6">' +
-    'You asked us to send these when you filled in the form at teams.doviloop.dev. ' +
+    'You asked us to send these when you filled in the form at ' +
+    (cfg.site_host || 'campaign-site-azure.vercel.app') + '. ' +
     'Three notes over two weeks, then they stop on their own.<br>' +
     '<a href="' + esc(unsubUrl) + '">Stop these emails</a>' +
     (cfg.postal_address ? '<br>' + esc(cfg.postal_address) : '') +
@@ -1395,12 +1404,12 @@ C3_CONFIG = (
     "  dovy_email: 'hello@doviloop.dev',\n"
     "  from_email: '" + SENDER_EMAIL + "',\n"
     "  data_dir: '/home/node/.n8n/campaign',\n"
-    "  publisher: 'buffer',\n"
+    "  publisher: 'direct',\n"
     "  buffer_api_url: 'https://graph.buffer.com/',\n"
     "  buffer_channels: { instagram: '', facebook: '', youtube_shorts: '', linkedin: '' },\n"
     "  meta_graph_version: 'v21.0',\n"
     "  ig_user_id: '',\n"
-    "  fb_page_id: '',\n"
+    "  fb_page_id: '1294387330427112',\n"
     "  asset_base_url: ''\n"
     "} }}"
 )
@@ -2120,7 +2129,7 @@ C4_CONFIG = (
     "  meta_graph_version: 'v21.0',\n"
     "  ig_user_id: '',\n"
     "  fb_page_id: '',\n"
-    "  landing_url: 'https://teams.doviloop.dev',\n"
+    "  landing_url: '" + CAMPAIGN_SITE_URL + "',\n"
     "  keywords: ['draft', 'drafts', 'demo', 'outlook', 'info'],\n"
     "  rate_limit_days: 90,\n"
     "  approve_base: '" + N8N_WEBHOOK_BASE + "/campaign/meta-dm-approve'\n"

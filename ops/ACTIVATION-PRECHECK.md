@@ -171,7 +171,7 @@ Everything else can wait until the account it belongs to exists.
 
 ---
 
-# 1. WF-C1 — Qualifier intake (`teams.doviloop.dev`)
+# 1. WF-C1 — Qualifier intake (`campaign-site-azure.vercel.app`)
 
 24 nodes, 1 trigger. Stage 1. Needs only SMTP + Supabase.
 
@@ -492,7 +492,7 @@ make in the n8n UI after import** — there, editing both is still on you.
 ig_user_id     ''   *** BLANK — Instagram Business Account ID ***
 fb_page_id     ''   *** BLANK ***
 approve_base   'https://viniflow-u57383.vm.elestio.app/webhook/campaign/meta-dm-approve'   FILLED 2026-09-11, in BOTH Config nodes
-landing_url    'https://teams.doviloop.dev'
+landing_url    'https://campaign-site-azure.vercel.app'
 keywords       ['draft','drafts','demo','outlook','info']
 rate_limit_days 90
 meta_graph_version 'v21.0'

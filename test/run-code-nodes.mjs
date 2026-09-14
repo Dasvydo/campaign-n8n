@@ -513,7 +513,7 @@ section('WF-C4 · keyword match, rate limit, and the mandatory approval step');
 const CFG_C4 = { ledger_url: 'https://yheilbuunzdugfnermfb.supabase.co',
   dovy_email: 'hello@doviloop.dev', from_email: 'bot@doviloop.dev',
   meta_graph_version: 'v21.0', ig_user_id: '178414', fb_page_id: '999',
-  landing_url: 'https://teams.doviloop.dev',
+  landing_url: 'https://campaign-site-azure.vercel.app',
   keywords: ['draft', 'drafts', 'demo', 'outlook', 'info'],
   rate_limit_days: 90, approve_base: 'https://n8n.example/webhook/campaign/meta-dm-approve' };
 
